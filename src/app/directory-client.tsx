@@ -114,9 +114,11 @@ export default function DirectoryClient({
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-lg items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Crest size={32} />
-            <h1 className="font-display text-base font-semibold text-[var(--ivory)]">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="shrink-0">
+              <Crest size={26} />
+            </div>
+            <h1 className="truncate font-display text-[15px] font-semibold text-[var(--ivory)]">
               {t("app_title", lang)}
             </h1>
           </div>
@@ -157,7 +159,7 @@ export default function DirectoryClient({
               setFilterType("all");
               setFilterValue("");
             }}
-            className={`rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`min-h-[36px] rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors ${
               filterType === "all"
                 ? "bg-[var(--maroon)] text-[var(--ivory)]"
                 : "bg-white text-[var(--maroon)] border border-[var(--border-warm)]"
@@ -177,7 +179,7 @@ export default function DirectoryClient({
                 setFilterValue("");
               }
             }}
-            className={`rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors appearance-none cursor-pointer ${
+            className={`min-h-[36px] rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors appearance-none cursor-pointer ${
               filterType === "city"
                 ? "bg-[var(--maroon)] text-[var(--ivory)]"
                 : "bg-white text-[var(--maroon)] border border-[var(--border-warm)]"
@@ -200,7 +202,7 @@ export default function DirectoryClient({
                 setFilterValue("");
               }
             }}
-            className={`rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors appearance-none cursor-pointer ${
+            className={`min-h-[36px] rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors appearance-none cursor-pointer ${
               filterType === "gotra"
                 ? "bg-[var(--maroon)] text-[var(--ivory)]"
                 : "bg-white text-[var(--maroon)] border border-[var(--border-warm)]"

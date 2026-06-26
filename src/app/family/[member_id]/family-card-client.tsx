@@ -114,9 +114,9 @@ function InfoRow({
 }) {
   if (!value) return null;
   return (
-    <div className="flex justify-between border-b border-[var(--border-warm)] py-2.5">
-      <span className="text-sm text-[var(--gold-deep)]">{label}</span>
-      <span className="max-w-[60%] text-right text-sm font-medium text-[var(--maroon-deep)]">
+    <div className="flex items-start justify-between gap-3 border-b border-[var(--border-warm)] py-2.5">
+      <span className="shrink-0 text-sm text-[var(--gold-deep)]">{label}</span>
+      <span className="min-w-0 break-words text-right text-sm font-medium text-[var(--maroon-deep)]">
         {value}
       </span>
     </div>
@@ -724,14 +724,14 @@ export default function FamilyCardClient({
                 />
               ) : (
                 <>
-                  <h2 className="font-display text-xl font-semibold text-[var(--maroon-deep)]">
+                  <h2 className="font-display text-lg font-semibold leading-snug text-[var(--maroon-deep)] sm:text-xl">
                     {name}
-                    {isOwnCard && !editing && (
-                      <span className="ml-2 inline-flex translate-y-[-2px] items-center rounded-full border border-[var(--gold)]/20 bg-[var(--cream-panel)] px-2 py-0.5 align-middle text-[10px] font-medium tracking-wide text-[var(--gold-deep)] font-sans">
-                        {t("this_is_you", lang)}
-                      </span>
-                    )}
                   </h2>
+                  {isOwnCard && !editing && (
+                    <span className="mt-1 inline-flex items-center rounded-full border border-[var(--gold)]/20 bg-[var(--cream-panel)] px-2 py-0.5 text-[10px] font-medium tracking-wide text-[var(--gold-deep)] font-sans">
+                      {t("this_is_you", lang)}
+                    </span>
+                  )}
                   {gotra && (
                     <p className="mt-0.5 text-sm text-[var(--gold-deep)]">
                       {t("label_gotra", lang)}: {gotra}

@@ -91,7 +91,7 @@ export default function BottomNav() {
                   d={item.icon}
                 />
               </svg>
-              <span className="mt-1 text-xs font-medium">
+              <span className="mt-1 truncate text-[10px] font-medium leading-tight">
                 {t(item.labelKey, lang)}
               </span>
             </button>

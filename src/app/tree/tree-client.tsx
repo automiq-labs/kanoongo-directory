@@ -79,6 +79,9 @@ function AnimatedChildren({
 
 // ── Recursive tree row ──────────────────────────────────────────────────────
 
+const INDENT_PX = 16; // compact indent to prevent overflow on narrow screens
+const MAX_INDENT_DEPTH = 8; // cap indentation beyond this
+
 function TreeRow({
   node,
   depth,
@@ -156,7 +159,7 @@ function TreeRow({
       {/* This row */}
       <div
         className="flex items-center gap-2 py-2.5"
-        style={{ paddingLeft: `${depth * 22}px` }}
+        style={{ paddingLeft: `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX}px` }}
       >
         {/* Expand/collapse chevron */}
         {hasChildren ? (
@@ -188,21 +191,23 @@ function TreeRow({
 
         {/* Name + spouse */}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-1.5">
-            <Link
-              href={`/family/${node.member_id}`}
-              className="font-display font-semibold text-[var(--maroon-deep)] hover:text-[var(--maroon)]"
-            >
-              {name}
-            </Link>
-            {spouseName && (
-              <span className="text-sm text-[var(--muted)]">
-                · {t("tree_with", lang)}{" "}
-                <span className="text-[var(--gold-deep)]">
-                  {spouseName}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <Link
+                href={`/family/${node.member_id}`}
+                className="font-display text-[15px] font-semibold text-[var(--maroon-deep)] hover:text-[var(--maroon)]"
+              >
+                {name}
+              </Link>
+              {spouseName && (
+                <span className="text-[13px] text-[var(--muted)]">
+                  · {t("tree_with", lang)}{" "}
+                  <span className="text-[var(--gold-deep)]">
+                    {spouseName}
+                  </span>
                 </span>
-              </span>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Child count badge */}
@@ -220,7 +225,7 @@ function TreeRow({
       {/* Children (expanded) */}
       {hasChildren && (
         <AnimatedChildren expanded={expanded}>
-          <div className="relative" style={{ marginLeft: `${depth * 22 + 13}px` }}>
+          <div className="relative" style={{ marginLeft: `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX + 10}px` }}>
             {/* Connector line */}
             <div className="absolute left-0 top-0 bottom-3 w-px bg-[var(--gold)]/20" />
 
@@ -261,9 +266,11 @@ export default function TreeClient({ roots }: { roots: TreeNode[] }) {
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-4 py-3 shadow-sm">
         <div className="mx-auto flex max-w-lg items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Crest size={28} />
-            <h1 className="font-display text-lg font-semibold text-[var(--ivory)]">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="shrink-0">
+              <Crest size={24} />
+            </div>
+            <h1 className="truncate font-display text-[15px] font-semibold text-[var(--ivory)]">
               {t("tree_title", lang)}
             </h1>
           </div>

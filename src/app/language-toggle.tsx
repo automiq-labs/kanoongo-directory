@@ -13,7 +13,7 @@ export default function LanguageToggle() {
   return (
     <button
       onClick={toggleLang}
-      className="rounded-[20px] border border-[var(--gold)]/40 px-3 py-1 text-xs font-medium tracking-wide text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)]"
+      className="min-h-[36px] rounded-[20px] border border-[var(--gold)]/40 px-3 py-1.5 text-xs font-medium tracking-wide text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)] active:bg-[var(--maroon-deep)]"
     >
       {lang === "hi" ? "English" : "हिंदी"}
     </button>

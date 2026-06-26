@@ -179,9 +179,9 @@ export default function ProfilePage() {
             {t("profile_account_info", lang)}
           </h3>
           <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
-            <div className="flex justify-between border-b border-[var(--border-warm)] py-2.5">
-              <span className="text-sm text-[var(--gold-deep)]">{t("profile_login_email", lang)}</span>
-              <span className="text-sm font-medium text-[var(--maroon-deep)]">{profile?.email}</span>
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-warm)] py-2.5">
+              <span className="shrink-0 text-sm text-[var(--gold-deep)]">{t("profile_login_email", lang)}</span>
+              <span className="truncate text-sm font-medium text-[var(--maroon-deep)]">{profile?.email}</span>
             </div>
             {profile?.memberId && (
               <div className="flex justify-between py-2.5">
