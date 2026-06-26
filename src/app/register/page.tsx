@@ -343,7 +343,7 @@ export default function RegisterPage() {
           ) : (
             <div />
           )}
-          <LanguageToggle />
+          <LanguageToggle variant="page" />
         </div>
 
         {/* Crest */}

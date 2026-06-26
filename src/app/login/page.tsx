@@ -43,8 +43,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col bg-[var(--cream)]">
       <div className="flex flex-1 items-center justify-center px-4">
         <div className="w-full max-w-sm">
-          <div className="mb-2 flex justify-end">
-            <LanguageToggle />
+          <div className="mb-4 flex justify-end">
+            <LanguageToggle variant="page" />
           </div>
 
           <div className="mb-8 text-center">
