@@ -36,6 +36,9 @@ interface SelfMatch {
   full_name_en: string | null;
   city: string | null;
   city_en: string | null;
+  marital_status: string | null;
+  already_claimed: boolean;
+  match_score: number;
 }
 
 type Step = "code" | "name" | "parent" | "confirm_self" | "account";
@@ -169,32 +172,24 @@ export default function RegisterPage() {
     setSelectedParent(parent);
     setError("");
 
-    // Step 3b — check for existing member under this parent matching user's name
-    const { data: children } = await supabase
-      .from("members")
-      .select("member_id, full_name, full_name_en, city, city_en")
-      .eq("father_member_id", parent.member_id);
-
-    if (children && children.length > 0) {
-      const nameLower = fullName.trim().toLowerCase();
-      const matches = (children as SelfMatch[]).filter((c) => {
-        const hi = (c.full_name || "").toLowerCase();
-        const en = (c.full_name_en || "").toLowerCase();
-        // Simple fuzzy: check if the typed name is a substring or vice versa
-        return (
-          hi.includes(nameLower) ||
-          en.includes(nameLower) ||
-          nameLower.includes(hi.split(" ")[0]) ||
-          (en && nameLower.includes(en.split(" ")[0]))
-        );
-      });
-
-      if (matches.length > 0) {
-        setSelfMatches(matches);
-        setClaimMemberId(null);
-        setStep("confirm_self");
-        return;
+    // Use the DB function to find matching children under this parent
+    const { data: matches, error: rpcErr } = await supabase.rpc(
+      "find_matching_children",
+      {
+        p_parent_member_id: parent.member_id,
+        q: fullName.trim(),
       }
+    );
+
+    if (rpcErr) {
+      console.error("find_matching_children error:", rpcErr);
+    }
+
+    if (matches && (matches as SelfMatch[]).length > 0) {
+      setSelfMatches(matches as SelfMatch[]);
+      setClaimMemberId(null);
+      setStep("confirm_self");
+      return;
     }
 
     // No matches — go straight to account creation
@@ -490,6 +485,50 @@ export default function RegisterPage() {
               {selfMatches.map((m) => {
                 const mName = bi(m.full_name, m.full_name_en, lang);
                 const mCity = bi(m.city, m.city_en, lang);
+
+                if (m.already_claimed) {
+                  // This member already has a login — don't allow claiming
+                  return (
+                    <div
+                      key={m.member_id}
+                      className="rounded-xl border border-[var(--border-card)] bg-[var(--cream-panel)] p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">
+                          {mName?.charAt(0) || "?"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{mName}</p>
+                          {mCity && <p className="text-sm text-[var(--gold-deep)]">{mCity}</p>}
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg bg-[var(--cream)] p-3">
+                        <p className="text-sm font-medium text-[var(--maroon)]">
+                          {t("reg_already_claimed", lang)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-[var(--muted)]">
+                          {t("reg_already_claimed_hint", lang)}
+                        </p>
+                        <div className="mt-2 flex gap-3">
+                          <Link
+                            href="/login"
+                            className="text-sm font-medium text-[var(--maroon)] underline underline-offset-2 hover:text-[var(--gold-deep)]"
+                          >
+                            {t("reg_go_to_login", lang)}
+                          </Link>
+                          <Link
+                            href="/reset-password"
+                            className="text-sm font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]"
+                          >
+                            {t("reg_forgot_password", lang)}
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Claimable — let user tap to claim
                 return (
                   <button
                     key={m.member_id}

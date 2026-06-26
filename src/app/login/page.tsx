@@ -112,11 +112,14 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-5 text-center text-sm text-[var(--gold-deep)]">
-            <Link href="/register" className="font-medium underline underline-offset-2 hover:text-[var(--maroon)]">
+          <div className="mt-5 flex flex-col items-center gap-2 text-sm">
+            <Link href="/reset-password" className="font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">
+              {t("forgot_password", lang)}
+            </Link>
+            <Link href="/register" className="font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">
               {t("reg_new_here", lang)}
             </Link>
-          </p>
+          </div>
         </div>
       </div>
 

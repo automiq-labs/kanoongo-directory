@@ -31,7 +31,8 @@ export async function proxy(request: NextRequest) {
 
   const isPublicPage =
     request.nextUrl.pathname === "/login" ||
-    request.nextUrl.pathname === "/register";
+    request.nextUrl.pathname === "/register" ||
+    request.nextUrl.pathname === "/reset-password";
 
   // If not logged in and not on a public page, redirect to login
   if (!user && !isPublicPage) {
