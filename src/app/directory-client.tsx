@@ -10,6 +10,7 @@ import { bi } from "@/lib/bilingual";
 import LanguageToggle from "./language-toggle";
 import BottomNav from "./bottom-nav";
 import { Crest } from "@/components/Crest";
+import { resolveMyMember } from "@/lib/resolve-my-member";
 import { StaggerList, StaggerItem } from "@/components/Motion";
 
 type DirectoryMember = Pick<
@@ -42,11 +43,10 @@ export default function DirectoryClient({
   useEffect(() => {
     let cancelled = false;
     async function loadAvatar() {
-      const { data: { user } } = await supabaseCl.auth.getUser();
-      if (!user || cancelled) return;
-      const { data: fam } = await supabaseCl.from("families").select("head_member_id").eq("auth_user_id", user.id).maybeSingle();
-      if (fam?.head_member_id) {
-        const { data: mem } = await supabaseCl.from("members").select("full_name, full_name_en, photo_url").eq("member_id", fam.head_member_id).single();
+      const { memberId } = await resolveMyMember(supabaseCl);
+      if (cancelled) return;
+      if (memberId) {
+        const { data: mem } = await supabaseCl.from("members").select("full_name, full_name_en, photo_url").eq("member_id", memberId).single();
         if (mem && !cancelled) {
           const n = lang === "en" ? (mem.full_name_en || mem.full_name) : mem.full_name;
           setUserAvatar({ photoUrl: mem.photo_url, initial: n?.charAt(0) || "?" });

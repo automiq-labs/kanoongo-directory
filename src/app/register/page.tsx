@@ -13,7 +13,6 @@ import { MakerMark } from "@/components/MakerMark";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Detect if text is primarily Latin script */
 function isLatin(text: string): boolean {
   const latin = text.replace(/[\s\d\W]/g, "").match(/[a-zA-Z]/g);
   return (latin?.length ?? 0) > text.replace(/[\s\d\W]/g, "").length / 2;
@@ -43,7 +42,25 @@ interface SelfMatch {
   match_id: string;
 }
 
-type Step = "code" | "name" | "parent" | "confirm_self" | "account";
+interface SpouseMatch {
+  spouse_id: string;
+  full_name: string;
+  full_name_en: string | null;
+  father_name: string | null;
+  father_name_en: string | null;
+  already_claimed: boolean;
+  match_score: number;
+}
+
+type Step =
+  | "code"
+  | "name"
+  | "relation"
+  | "parent"
+  | "confirm_self"
+  | "husband"
+  | "confirm_spouse"
+  | "account";
 
 // ── Step indicator ──────────────────────────────────────────────────────────
 
@@ -71,14 +88,12 @@ function StepDots({ current, total }: { current: number; total: number }) {
 export default function RegisterPage() {
   const { lang } = useLang();
   const router = useRouter();
-  // Stable reference — createClient() from @supabase/ssr returns a singleton per browser,
-  // but wrapping in useMemo ensures the reference is stable across renders so useCallback
-  // dependencies don't thrash.
   const supabase = useMemo(() => createClient(), []);
 
   // Flow state
   const [step, setStep] = useState<Step>("code");
   const [error, setError] = useState("");
+  const [relation, setRelation] = useState<"birth" | "wife" | null>(null);
 
   // Step 1 — code
   const [code, setCode] = useState("");
@@ -87,7 +102,7 @@ export default function RegisterPage() {
   // Step 2 — name
   const [fullName, setFullName] = useState("");
 
-  // Step 3 — parent
+  // Step 3a — parent search (birth path)
   const [parentQuery, setParentQuery] = useState("");
   const [parentResults, setParentResults] = useState<ParentCandidate[]>([]);
   const [parentSearching, setParentSearching] = useState(false);
@@ -95,9 +110,21 @@ export default function RegisterPage() {
   const [selectedParent, setSelectedParent] = useState<ParentCandidate | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Step 3b — self match
+  // Step 3a cont — self match (birth path)
   const [selfMatches, setSelfMatches] = useState<SelfMatch[]>([]);
   const [claimMemberId, setClaimMemberId] = useState<string | null>(null);
+
+  // Step 3b — husband search (wife path)
+  const [husbandQuery, setHusbandQuery] = useState("");
+  const [husbandResults, setHusbandResults] = useState<ParentCandidate[]>([]);
+  const [husbandSearching, setHusbandSearching] = useState(false);
+  const [husbandSearchDone, setHusbandSearchDone] = useState(false);
+  const [selectedHusband, setSelectedHusband] = useState<ParentCandidate | null>(null);
+  const husbandDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Step 3b cont — spouse match (wife path)
+  const [spouseMatches, setSpouseMatches] = useState<SpouseMatch[]>([]);
+  const [claimSpouseId, setClaimSpouseId] = useState<string | null>(null);
 
   // Step 4 — account
   const [email, setEmail] = useState("");
@@ -106,8 +133,17 @@ export default function RegisterPage() {
   const [creating, setCreating] = useState(false);
   const [emailConfirmNeeded, setEmailConfirmNeeded] = useState(false);
 
-  // Step number for dots
-  const stepIndex = { code: 0, name: 1, parent: 2, confirm_self: 2, account: 3 }[step];
+  // Step index for dots (5 logical steps: code, name, relation, search+match, account)
+  const stepIndex: number = {
+    code: 0,
+    name: 1,
+    relation: 2,
+    parent: 3,
+    confirm_self: 3,
+    husband: 3,
+    confirm_spouse: 3,
+    account: 4,
+  }[step];
 
   // ── Step 1 — validate code ───────────────────────────────────────────────
 
@@ -133,14 +169,25 @@ export default function RegisterPage() {
     }
   }
 
-  // ── Step 2 — name → parent ───────────────────────────────────────────────
+  // ── Step 2 — name → relation choice ──────────────────────────────────────
 
   function handleNameNext() {
     if (!fullName.trim()) return;
-    setStep("parent");
+    setStep("relation");
   }
 
-  // ── Step 3 — parent search (debounced) ────────────────────────────────────
+  // ── Step 2b — relation choice ────────────────────────────────────────────
+
+  function handleRelationChoice(r: "birth" | "wife") {
+    setRelation(r);
+    if (r === "birth") {
+      setStep("parent");
+    } else {
+      setStep("husband");
+    }
+  }
+
+  // ── Step 3a — parent search (birth path, debounced) ──────────────────────
 
   const searchParent = useCallback(
     async (q: string) => {
@@ -151,9 +198,7 @@ export default function RegisterPage() {
       }
       setParentSearching(true);
       const { data, error } = await supabase.rpc("search_parent_fuzzy", { q: q.trim() });
-      if (error) {
-        console.error("search_parent_fuzzy error:", error);
-      }
+      if (error) console.error("search_parent_fuzzy error:", error);
       setParentResults((data as ParentCandidate[]) || []);
       setParentSearching(false);
       setParentSearchDone(true);
@@ -165,27 +210,18 @@ export default function RegisterPage() {
     if (step !== "parent") return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchParent(parentQuery), 350);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [parentQuery, step, searchParent]);
 
   async function handleParentSelect(parent: ParentCandidate) {
     setSelectedParent(parent);
     setError("");
 
-    // Use the DB function to find matching children under this parent
     const { data: matches, error: rpcErr } = await supabase.rpc(
       "find_matching_children",
-      {
-        p_parent_member_id: parent.member_id,
-        q: fullName.trim(),
-      }
+      { p_parent_member_id: parent.member_id, q: fullName.trim() }
     );
-
-    if (rpcErr) {
-      console.error("find_matching_children error:", rpcErr);
-    }
+    if (rpcErr) console.error("find_matching_children error:", rpcErr);
 
     if (matches && (matches as SelfMatch[]).length > 0) {
       setSelfMatches(matches as SelfMatch[]);
@@ -194,7 +230,6 @@ export default function RegisterPage() {
       return;
     }
 
-    // No matches — go straight to account creation
     setClaimMemberId(null);
     setStep("account");
   }
@@ -205,8 +240,6 @@ export default function RegisterPage() {
     setStep("account");
   }
 
-  // ── Step 3b — self match ──────────────────────────────────────────────────
-
   function handleClaimSelf(matchId: string) {
     setClaimMemberId(matchId);
     setStep("account");
@@ -214,6 +247,70 @@ export default function RegisterPage() {
 
   function handleNewSelf() {
     setClaimMemberId(null);
+    setStep("account");
+  }
+
+  // ── Step 3b — husband search (wife path, debounced) ──────────────────────
+
+  const searchHusband = useCallback(
+    async (q: string) => {
+      if (q.trim().length < 2) {
+        setHusbandResults([]);
+        setHusbandSearchDone(false);
+        return;
+      }
+      setHusbandSearching(true);
+      const { data, error } = await supabase.rpc("search_parent_fuzzy", { q: q.trim() });
+      if (error) console.error("search_parent_fuzzy error:", error);
+      setHusbandResults((data as ParentCandidate[]) || []);
+      setHusbandSearching(false);
+      setHusbandSearchDone(true);
+    },
+    [supabase]
+  );
+
+  useEffect(() => {
+    if (step !== "husband") return;
+    if (husbandDebounceRef.current) clearTimeout(husbandDebounceRef.current);
+    husbandDebounceRef.current = setTimeout(() => searchHusband(husbandQuery), 350);
+    return () => { if (husbandDebounceRef.current) clearTimeout(husbandDebounceRef.current); };
+  }, [husbandQuery, step, searchHusband]);
+
+  async function handleHusbandSelect(husband: ParentCandidate) {
+    setSelectedHusband(husband);
+    setError("");
+
+    const { data: matches, error: rpcErr } = await supabase.rpc(
+      "find_matching_spouses",
+      { p_husband_member_id: husband.member_id, q: fullName.trim() }
+    );
+    if (rpcErr) console.error("find_matching_spouses error:", rpcErr);
+
+    if (matches && (matches as SpouseMatch[]).length > 0) {
+      setSpouseMatches(matches as SpouseMatch[]);
+      setClaimSpouseId(null);
+      setStep("confirm_spouse");
+      return;
+    }
+
+    // No spouse match — go to create-new
+    setClaimSpouseId(null);
+    setStep("account");
+  }
+
+  function handleSkipHusband() {
+    setSelectedHusband(null);
+    setClaimSpouseId(null);
+    setStep("account");
+  }
+
+  function handleClaimSpouse(spouseId: string) {
+    setClaimSpouseId(spouseId);
+    setStep("account");
+  }
+
+  function handleNewSpouse() {
+    setClaimSpouseId(null);
     setStep("account");
   }
 
@@ -234,7 +331,6 @@ export default function RegisterPage() {
 
     setCreating(true);
     try {
-      // 1. Sign up
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
@@ -246,19 +342,11 @@ export default function RegisterPage() {
         return;
       }
 
-      // 2. Ensure we have an active session before calling the RPC.
-      //    With email confirmation OFF, signUp returns a session immediately.
-      //    If not, fall back to an explicit sign-in.
       let session = signUpData.session;
       if (!session) {
         const { data: signInData, error: signInError } =
-          await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-          });
-
+          await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (signInError) {
-          // Likely email confirmation is required
           setEmailConfirmNeeded(true);
           setCreating(false);
           return;
@@ -267,13 +355,11 @@ export default function RegisterPage() {
       }
 
       if (!session) {
-        // Still no session — email confirmation must be required
         setEmailConfirmNeeded(true);
         setCreating(false);
         return;
       }
 
-      // 3. Session is active. Complete registration — link to family tree.
       const nameTrimmed = fullName.trim();
       const p_name = nameTrimmed;
       const p_name_en = isLatin(nameTrimmed) ? nameTrimmed : null;
@@ -281,8 +367,9 @@ export default function RegisterPage() {
       const { error: rpcError } = await supabase.rpc("complete_registration", {
         p_name,
         p_name_en: p_name_en || null,
-        p_parent_member_id: selectedParent?.member_id || null,
+        p_parent_member_id: selectedParent?.member_id || selectedHusband?.member_id || null,
         p_claim_member_id: claimMemberId || null,
+        p_claim_spouse_id: claimSpouseId || null,
       });
 
       if (rpcError) {
@@ -292,7 +379,6 @@ export default function RegisterPage() {
         return;
       }
 
-      // 4. Only now redirect — registration is fully linked.
       router.push("/");
       router.refresh();
     } catch (err) {
@@ -300,6 +386,29 @@ export default function RegisterPage() {
       setError(t("reg_signup_error", lang));
     } finally {
       setCreating(false);
+    }
+  }
+
+  // ── Back navigation ───────────────────────────────────────────────────────
+
+  function handleBack() {
+    setError("");
+    switch (step) {
+      case "name": setStep("code"); break;
+      case "relation": setStep("name"); break;
+      case "parent": setStep("relation"); break;
+      case "confirm_self": setStep("parent"); break;
+      case "husband": setStep("relation"); break;
+      case "confirm_spouse": setStep("husband"); break;
+      case "account":
+        if (relation === "wife") {
+          if (spouseMatches.length > 0 && selectedHusband) setStep("confirm_spouse");
+          else setStep("husband");
+        } else {
+          if (selfMatches.length > 0 && selectedParent) setStep("confirm_self");
+          else setStep("parent");
+        }
+        break;
     }
   }
 
@@ -322,19 +431,7 @@ export default function RegisterPage() {
         {/* Top bar */}
         <div className="mb-4 flex items-center justify-between">
           {step !== "code" && !emailConfirmNeeded ? (
-            <button
-              onClick={() => {
-                if (step === "name") setStep("code");
-                else if (step === "parent") setStep("name");
-                else if (step === "confirm_self") setStep("parent");
-                else if (step === "account") {
-                  if (selfMatches.length > 0 && selectedParent) setStep("confirm_self");
-                  else if (selectedParent || !selectedParent) setStep("parent");
-                }
-                setError("");
-              }}
-              className="text-sm font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]"
-            >
+            <button onClick={handleBack} className="text-sm font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
               ← {t("reg_back", lang)}
             </button>
           ) : (
@@ -353,17 +450,15 @@ export default function RegisterPage() {
           {t("reg_title", lang)}
         </h1>
 
-        <StepDots current={stepIndex} total={4} />
+        <StepDots current={stepIndex} total={5} />
 
-        {/* ── STEP: CODE ─────────────────────────────────────────────── */}
+        {/* ── STEP: CODE ──────────────────────────────────────────────── */}
         {step === "code" && (
           <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
             <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">
               {t("reg_step_code_title", lang)}
             </h2>
-            <p className="mb-5 text-sm text-[var(--muted)]">
-              {t("reg_step_code_hint", lang)}
-            </p>
+            <p className="mb-5 text-sm text-[var(--muted)]">{t("reg_step_code_hint", lang)}</p>
             <input
               type="text"
               value={code}
@@ -373,22 +468,14 @@ export default function RegisterPage() {
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && code.trim() && handleCodeSubmit()}
             />
-
-            {error && (
-              <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
-            )}
-
-            <button
-              onClick={handleCodeSubmit}
-              disabled={!code.trim() || codeLoading}
-              className={`mt-5 ${primaryBtn}`}
-            >
+            {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+            <button onClick={handleCodeSubmit} disabled={!code.trim() || codeLoading} className={`mt-5 ${primaryBtn}`}>
               {codeLoading ? t("reg_checking", lang) : t("reg_next", lang)}
             </button>
           </div>
         )}
 
-        {/* ── STEP: NAME ─────────────────────────────────────────────── */}
+        {/* ── STEP: NAME ──────────────────────────────────────────────── */}
         {step === "name" && (
           <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
             <h2 className="mb-5 text-lg font-semibold text-[var(--maroon-deep)]">
@@ -403,25 +490,52 @@ export default function RegisterPage() {
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && fullName.trim() && handleNameNext()}
             />
-            <button
-              onClick={handleNameNext}
-              disabled={!fullName.trim()}
-              className={`mt-5 ${primaryBtn}`}
-            >
+            <button onClick={handleNameNext} disabled={!fullName.trim()} className={`mt-5 ${primaryBtn}`}>
               {t("reg_next", lang)}
             </button>
           </div>
         )}
 
-        {/* ── STEP: PARENT ───────────────────────────────────────────── */}
+        {/* ── STEP: RELATION CHOICE ───────────────────────────────────── */}
+        {step === "relation" && (
+          <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <h2 className="mb-5 text-lg font-semibold text-[var(--maroon-deep)]">
+              {t("reg_relation_title", lang)}
+            </h2>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleRelationChoice("birth")}
+                className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-4 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg text-[var(--maroon)]">
+                  👨‍👩‍👧
+                </span>
+                <span className="text-sm font-medium text-[var(--maroon-deep)]">
+                  {t("reg_relation_birth", lang)}
+                </span>
+              </button>
+              <button
+                onClick={() => handleRelationChoice("wife")}
+                className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-4 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg text-[var(--maroon)]">
+                  💑
+                </span>
+                <span className="text-sm font-medium text-[var(--maroon-deep)]">
+                  {t("reg_relation_wife", lang)}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP: PARENT (birth path) ───────────────────────────────── */}
         {step === "parent" && (
           <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
             <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">
               {t("reg_step_parent_title", lang)}
             </h2>
-            <p className="mb-5 text-sm text-[var(--muted)]">
-              {t("reg_step_parent_hint", lang)}
-            </p>
+            <p className="mb-5 text-sm text-[var(--muted)]">{t("reg_step_parent_hint", lang)}</p>
             <input
               type="text"
               value={parentQuery}
@@ -430,221 +544,205 @@ export default function RegisterPage() {
               className={inputClass}
               autoFocus
             />
-
-            {/* Results */}
             <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
-              {parentSearching && (
-                <p className="py-3 text-center text-sm text-[var(--muted)]">
-                  {t("reg_checking", lang)}
-                </p>
-              )}
+              {parentSearching && <p className="py-3 text-center text-sm text-[var(--muted)]">{t("reg_checking", lang)}</p>}
               {!parentSearching && parentSearchDone && parentResults.length === 0 && parentQuery.trim().length >= 2 && (
-                <p className="py-3 text-center text-sm text-[var(--muted)]">
-                  {t("reg_parent_no_results", lang)}
-                </p>
+                <p className="py-3 text-center text-sm text-[var(--muted)]">{t("reg_parent_no_results", lang)}</p>
               )}
               {parentResults.map((p) => {
                 const pName = bi(p.full_name, p.full_name_en, lang);
                 const pCity = bi(p.city, p.city_en, lang);
                 return (
-                  <button
-                    key={p.member_id}
-                    onClick={() => handleParentSelect(p)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-3.5 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]"
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-base font-bold text-[var(--maroon)]">
-                      {pName?.charAt(0) || "?"}
-                    </div>
+                  <button key={p.member_id} onClick={() => handleParentSelect(p)} className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-3.5 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-base font-bold text-[var(--maroon)]">{pName?.charAt(0) || "?"}</div>
                     <div className="min-w-0">
                       <p className="font-display font-semibold text-[var(--maroon-deep)]">{pName}</p>
-                      {pCity && (
-                        <p className="text-sm text-[var(--gold-deep)]">{pCity}</p>
-                      )}
+                      {pCity && <p className="text-sm text-[var(--gold-deep)]">{pCity}</p>}
                     </div>
                   </button>
                 );
               })}
             </div>
-
-            {/* Skip */}
             <button onClick={handleSkipParent} className={`mt-5 ${secondaryBtn}`}>
               {t("reg_parent_skip", lang)}
             </button>
           </div>
         )}
 
-        {/* ── STEP: CONFIRM SELF ─────────────────────────────────────── */}
+        {/* ── STEP: CONFIRM SELF (birth path) ─────────────────────────── */}
         {step === "confirm_self" && (
           <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
-            <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">
-              {t("reg_is_this_you", lang)}
-            </h2>
-            <p className="mb-5 text-sm text-[var(--muted)]">
-              {t("reg_is_this_you_hint", lang)}
-            </p>
-
+            <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">{t("reg_is_this_you", lang)}</h2>
+            <p className="mb-5 text-sm text-[var(--muted)]">{t("reg_is_this_you_hint", lang)}</p>
             <div className="space-y-2">
               {selfMatches.map((m) => {
                 const mName = bi(m.full_name, m.full_name_en, lang);
                 const mCity = bi(m.city, m.city_en, lang);
 
                 if (m.already_claimed) {
-                  // This member already has a login — don't allow claiming
                   return (
-                    <div
-                      key={m.match_id}
-                      className="rounded-xl border border-[var(--border-card)] bg-[var(--cream-panel)] p-4"
-                    >
+                    <div key={m.match_id} className="rounded-xl border border-[var(--border-card)] bg-[var(--cream-panel)] p-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">
-                          {mName?.charAt(0) || "?"}
-                        </div>
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">{mName?.charAt(0) || "?"}</div>
                         <div className="min-w-0 flex-1">
                           <p className="font-display font-semibold text-[var(--maroon-deep)]">{mName}</p>
                           {mCity && <p className="text-sm text-[var(--gold-deep)]">{mCity}</p>}
                         </div>
                       </div>
                       <div className="mt-3 rounded-lg bg-[var(--cream)] p-3">
-                        <p className="text-sm font-medium text-[var(--maroon)]">
-                          {t("reg_already_claimed", lang)}
-                        </p>
-                        <p className="mt-0.5 text-xs text-[var(--muted)]">
-                          {t("reg_already_claimed_hint", lang)}
-                        </p>
+                        <p className="text-sm font-medium text-[var(--maroon)]">{t("reg_already_claimed", lang)}</p>
+                        <p className="mt-0.5 text-xs text-[var(--muted)]">{t("reg_already_claimed_hint", lang)}</p>
                         <div className="mt-2 flex gap-3">
-                          <Link
-                            href="/login"
-                            className="text-sm font-medium text-[var(--maroon)] underline underline-offset-2 hover:text-[var(--gold-deep)]"
-                          >
-                            {t("reg_go_to_login", lang)}
-                          </Link>
-                          <Link
-                            href="/reset-password"
-                            className="text-sm font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]"
-                          >
-                            {t("reg_forgot_password", lang)}
-                          </Link>
+                          <Link href="/login" className="text-sm font-medium text-[var(--maroon)] underline underline-offset-2 hover:text-[var(--gold-deep)]">{t("reg_go_to_login", lang)}</Link>
+                          <Link href="/reset-password" className="text-sm font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">{t("reg_forgot_password", lang)}</Link>
                         </div>
                       </div>
                     </div>
                   );
                 }
 
-                // Claimable — let user tap to claim
                 return (
-                  <button
-                    key={m.match_id}
-                    onClick={() => handleClaimSelf(m.match_id)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-4 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]"
-                  >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">
-                      {mName?.charAt(0) || "?"}
-                    </div>
+                  <button key={m.match_id} onClick={() => handleClaimSelf(m.match_id)} className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-4 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">{mName?.charAt(0) || "?"}</div>
                     <div className="min-w-0 flex-1">
                       <p className="font-display font-semibold text-[var(--maroon-deep)]">{mName}</p>
                       {mCity && <p className="text-sm text-[var(--gold-deep)]">{mCity}</p>}
                     </div>
-                    <span className="shrink-0 text-xs font-medium text-[var(--gold-deep)]">
-                      {t("reg_yes_thats_me", lang)} →
-                    </span>
+                    <span className="shrink-0 text-xs font-medium text-[var(--gold-deep)]">{t("reg_yes_thats_me", lang)} →</span>
                   </button>
                 );
               })}
             </div>
+            <button onClick={handleNewSelf} className={`mt-5 ${secondaryBtn}`}>{t("reg_no_im_new", lang)}</button>
+          </div>
+        )}
 
-            <button onClick={handleNewSelf} className={`mt-5 ${secondaryBtn}`}>
-              {t("reg_no_im_new", lang)}
+        {/* ── STEP: HUSBAND (wife path) ───────────────────────────────── */}
+        {step === "husband" && (
+          <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">
+              {t("reg_husband_title", lang)}
+            </h2>
+            <p className="mb-5 text-sm text-[var(--muted)]">{t("reg_husband_hint", lang)}</p>
+            <input
+              type="text"
+              value={husbandQuery}
+              onChange={(e) => { setHusbandQuery(e.target.value); setHusbandSearchDone(false); }}
+              placeholder={t("reg_husband_placeholder", lang)}
+              className={inputClass}
+              autoFocus
+            />
+            <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+              {husbandSearching && <p className="py-3 text-center text-sm text-[var(--muted)]">{t("reg_checking", lang)}</p>}
+              {!husbandSearching && husbandSearchDone && husbandResults.length === 0 && husbandQuery.trim().length >= 2 && (
+                <p className="py-3 text-center text-sm text-[var(--muted)]">{t("reg_parent_no_results", lang)}</p>
+              )}
+              {husbandResults.map((h) => {
+                const hName = bi(h.full_name, h.full_name_en, lang);
+                const hCity = bi(h.city, h.city_en, lang);
+                return (
+                  <button key={h.member_id} onClick={() => handleHusbandSelect(h)} className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-3.5 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-base font-bold text-[var(--maroon)]">{hName?.charAt(0) || "?"}</div>
+                    <div className="min-w-0">
+                      <p className="font-display font-semibold text-[var(--maroon-deep)]">{hName}</p>
+                      {hCity && <p className="text-sm text-[var(--gold-deep)]">{hCity}</p>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={handleSkipHusband} className={`mt-5 ${secondaryBtn}`}>
+              {t("reg_parent_skip", lang)}
             </button>
           </div>
         )}
 
-        {/* ── STEP: ACCOUNT ──────────────────────────────────────────── */}
+        {/* ── STEP: CONFIRM SPOUSE (wife path) ────────────────────────── */}
+        {step === "confirm_spouse" && (
+          <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">{t("reg_is_this_you", lang)}</h2>
+            <p className="mb-5 text-sm text-[var(--muted)]">{t("reg_is_this_you_hint", lang)}</p>
+            <div className="space-y-2">
+              {spouseMatches.map((s) => {
+                const sName = bi(s.full_name, s.full_name_en, lang);
+                const sFather = bi(s.father_name, s.father_name_en, lang);
+
+                if (s.already_claimed) {
+                  return (
+                    <div key={s.spouse_id} className="rounded-xl border border-[var(--border-card)] bg-[var(--cream-panel)] p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">{sName?.charAt(0) || "?"}</div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{sName}</p>
+                          {sFather && <p className="text-sm text-[var(--gold-deep)]">{t("reg_spouse_father", lang)}: {sFather}</p>}
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg bg-[var(--cream)] p-3">
+                        <p className="text-sm font-medium text-[var(--maroon)]">{t("reg_already_claimed", lang)}</p>
+                        <p className="mt-0.5 text-xs text-[var(--muted)]">{t("reg_already_claimed_hint", lang)}</p>
+                        <div className="mt-2 flex gap-3">
+                          <Link href="/login" className="text-sm font-medium text-[var(--maroon)] underline underline-offset-2 hover:text-[var(--gold-deep)]">{t("reg_go_to_login", lang)}</Link>
+                          <Link href="/reset-password" className="text-sm font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">{t("reg_forgot_password", lang)}</Link>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <button key={s.spouse_id} onClick={() => handleClaimSpouse(s.spouse_id)} className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-4 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">{sName?.charAt(0) || "?"}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-display font-semibold text-[var(--maroon-deep)]">{sName}</p>
+                      {sFather && <p className="text-sm text-[var(--gold-deep)]">{t("reg_spouse_father", lang)}: {sFather}</p>}
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-[var(--gold-deep)]">{t("reg_yes_thats_me", lang)} →</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={handleNewSpouse} className={`mt-5 ${secondaryBtn}`}>{t("reg_no_im_new", lang)}</button>
+          </div>
+        )}
+
+        {/* ── STEP: ACCOUNT ───────────────────────────────────────────── */}
         {step === "account" && !emailConfirmNeeded && (
           <form onSubmit={handleCreateAccount} className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
             <h2 className="mb-5 text-lg font-semibold text-[var(--maroon-deep)]">
               {t("reg_step_account_title", lang)}
             </h2>
-
             <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">
-                {t("email", lang)}
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                className={inputClass}
-                placeholder="email@example.com"
-                autoFocus
-              />
+              <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">{t("email", lang)}</label>
+              <input type="email" required value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} className={inputClass} placeholder="email@example.com" autoFocus />
             </div>
-
             <div className="mb-4">
-              <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">
-                {t("password", lang)}
-              </label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                className={inputClass}
-                placeholder="••••••••"
-              />
+              <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">{t("password", lang)}</label>
+              <input type="password" required value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }} className={inputClass} placeholder="••••••••" />
             </div>
-
             <div className="mb-5">
-              <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">
-                {t("reg_confirm_password", lang)}
-              </label>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
-                className={inputClass}
-                placeholder="••••••••"
-              />
+              <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">{t("reg_confirm_password", lang)}</label>
+              <input type="password" required value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }} className={inputClass} placeholder="••••••••" />
             </div>
-
-            {error && (
-              <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
-            )}
-
+            {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>}
             <button type="submit" disabled={creating} className={primaryBtn}>
               {creating ? t("reg_creating", lang) : t("reg_create_account", lang)}
             </button>
           </form>
         )}
 
-        {/* ── EMAIL CONFIRMATION MESSAGE ──────────────────────────────── */}
+        {/* ── EMAIL CONFIRMATION ──────────────────────────────────────── */}
         {emailConfirmNeeded && (
           <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 text-center shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
-            <div className="mx-auto mb-4 flex justify-center">
-              <Crest size={56} />
-            </div>
-            <h2 className="mb-2 text-lg font-semibold text-[var(--maroon-deep)]">
-              {t("reg_email_confirm", lang)}
-            </h2>
-            <Link
-              href="/login"
-              className="mt-4 inline-block rounded-lg bg-[var(--maroon)] px-6 py-3 font-medium text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)]"
-            >
-              {t("login_button", lang)}
-            </Link>
+            <div className="mx-auto mb-4 flex justify-center"><Crest size={56} /></div>
+            <h2 className="mb-2 text-lg font-semibold text-[var(--maroon-deep)]">{t("reg_email_confirm", lang)}</h2>
+            <Link href="/login" className="mt-4 inline-block rounded-lg bg-[var(--maroon)] px-6 py-3 font-medium text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)]">{t("login_button", lang)}</Link>
           </div>
         )}
 
         {/* Bottom link */}
         {!emailConfirmNeeded && (
           <p className="mt-6 text-center text-sm text-[var(--gold-deep)]">
-            <Link
-              href="/login"
-              className="font-medium underline underline-offset-2 hover:text-[var(--maroon)]"
-            >
-              {t("reg_have_account", lang)}
-            </Link>
+            <Link href="/login" className="font-medium underline underline-offset-2 hover:text-[var(--maroon)]">{t("reg_have_account", lang)}</Link>
           </p>
         )}
       </div>

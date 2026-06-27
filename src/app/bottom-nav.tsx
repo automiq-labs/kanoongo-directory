@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useLang } from "@/lib/language-context";
 import { t } from "@/lib/translations";
 import { createClient } from "@/lib/supabase/client";
+import { resolveMyMember } from "@/lib/resolve-my-member";
 
 export default function BottomNav() {
   const { lang } = useLang();
@@ -17,25 +18,11 @@ export default function BottomNav() {
   useEffect(() => {
     let cancelled = false;
     async function fetchMyMember() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
-
-      const { data: fam } = await supabase
-        .from("families")
-        .select("head_member_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-      if (!cancelled) {
-        setMyMemberId(fam?.head_member_id ?? null);
-      }
+      const { memberId } = await resolveMyMember(supabase);
+      if (!cancelled) setMyMemberId(memberId);
     }
     fetchMyMember();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [supabase]);
 
   const myFamilyHref = myMemberId ? `/family/${myMemberId}` : null;
@@ -62,7 +49,7 @@ export default function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--border-warm)] bg-white">
       <div className="mx-auto flex max-w-lg">
         {navItems.map((item) => {
-          if (!item.href) return null; // hide if not resolved (no linked member)
+          if (!item.href) return null;
 
           const isActive =
             item.href === "/"

@@ -426,6 +426,46 @@ export default function FamilyCardClient({
     setToast(null);
   }
 
+  // ── Add husband (for married daughters without a spouse row) ────────────
+
+  async function handleAddHusband() {
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc("add_spouse", {
+      p_member_id: m.member_id,
+      p_full_name: m.husband_name || "",
+      p_full_name_en: m.husband_name_en || m.husband_name || null,
+      p_gender: "M",
+    });
+
+    if (error) {
+      console.error("add_spouse RPC failed:", error);
+      setToast({ type: "error", msg: t("save_error", lang) });
+      return;
+    }
+    router.refresh();
+  }
+
+  // ── Add child (for married daughters) ──────────────────────────────────
+
+  async function handleAddChild() {
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc("add_child", {
+      p_parent_member_id: m.member_id,
+      p_full_name: "",
+      p_full_name_en: null,
+      p_gender: null,
+    });
+
+    if (error) {
+      console.error("add_child RPC failed:", error);
+      setToast({ type: "error", msg: t("save_error", lang) });
+      return;
+    }
+    router.refresh();
+  }
+
   // Helper to update a field in memberEdits bilingually
   function setMemberField(baseField: string, value: string) {
     setMemberEdits((prev) =>
@@ -641,6 +681,9 @@ export default function FamilyCardClient({
   const address = [addr1, addr2, city, m.pincode].filter(Boolean).join(", ");
   const husbandName = bi(m.husband_name, m.husband_name_en, lang);
   const isFemale = m.gender === "F";
+  const isMarriedDaughter = m.member_id.startsWith("D");
+  // For married daughters: if a real spouse row exists, show that instead of text husband_name
+  const hasRealHusbandSpouse = isMarriedDaughter && spouses.length > 0;
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -869,8 +912,8 @@ export default function FamilyCardClient({
           </>
         )}
 
-        {/* ── HUSBAND (for married women) ─────────────────────────────── */}
-        {(isFemale && (husbandName || editing)) && (
+        {/* ── HUSBAND (for married women — text fallback when no spouse row) ── */}
+        {isFemale && !hasRealHusbandSpouse && (husbandName || editing) && (
           <>
             <SectionTitle>
               💑 {t("section_husband", lang)}
@@ -878,11 +921,21 @@ export default function FamilyCardClient({
             <FadeIn delay={0.15}>
             <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
               {editing ? (
-                <EditRow
-                  label={t("label_husband_name", lang)}
-                  value={getEditVal(memberEdits as unknown as Record<string, string>, "husband_name", lang)}
-                  onChange={(v) => setMemberField("husband_name", v)}
-                />
+                <>
+                  <EditRow
+                    label={t("label_husband_name", lang)}
+                    value={getEditVal(memberEdits as unknown as Record<string, string>, "husband_name", lang)}
+                    onChange={(v) => setMemberField("husband_name", v)}
+                  />
+                  {isMarriedDaughter && canEdit && (
+                    <button
+                      onClick={handleAddHusband}
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--gold-deep)] transition-colors hover:bg-[var(--cream-panel)]"
+                    >
+                      + {t("add_husband_details", lang)}
+                    </button>
+                  )}
+                </>
               ) : (
                 <InfoRow label={t("label_husband_name", lang)} value={husbandName} />
               )}
@@ -891,7 +944,7 @@ export default function FamilyCardClient({
           </>
         )}
 
-        {/* ── SPOUSE ───────────────────────────────────────────────────── */}
+        {/* ── SPOUSE (real spouse rows — shown for everyone, including daughters with a husband record) ── */}
         {spouses.length > 0 && (
           <>
             <SectionTitle>
@@ -1004,7 +1057,7 @@ export default function FamilyCardClient({
         )}
 
         {/* ── CHILDREN ─────────────────────────────────────────────────── */}
-        {childrenData.length > 0 && (
+        {(childrenData.length > 0 || (isMarriedDaughter && canEdit && editing)) && (
           <>
             <SectionTitle>
               👶 {t("section_children", lang)}
@@ -1085,6 +1138,14 @@ export default function FamilyCardClient({
                   </div>
                 );
               })}
+              {isMarriedDaughter && canEdit && editing && (
+                <button
+                  onClick={handleAddChild}
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--gold-deep)] transition-colors hover:bg-[var(--cream-panel)]"
+                >
+                  + {t("add_child", lang)}
+                </button>
+              )}
             </div>
             </FadeIn>
           </>

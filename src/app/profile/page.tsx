@@ -9,6 +9,7 @@ import { bi } from "@/lib/bilingual";
 import { Crest } from "@/components/Crest";
 import { MakerMark } from "@/components/MakerMark";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
+import { resolveMyMember } from "@/lib/resolve-my-member";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
 
@@ -39,18 +40,14 @@ export default function ProfilePage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
 
-      const { data: fam } = await supabase
-        .from("families")
-        .select("id, head_member_id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
+      const { memberId: headMemberId, familyId } = await resolveMyMember(supabase);
 
       let memberData = null;
-      if (fam?.head_member_id) {
+      if (headMemberId) {
         const { data } = await supabase
           .from("members")
           .select("full_name, full_name_en, city, city_en, photo_url")
-          .eq("member_id", fam.head_member_id)
+          .eq("member_id", headMemberId)
           .single();
         memberData = data;
       }
@@ -58,13 +55,13 @@ export default function ProfilePage() {
       if (!cancelled) {
         setProfile({
           email: user.email || "",
-          memberId: fam?.head_member_id || null,
+          memberId: headMemberId,
           memberName: memberData?.full_name || null,
           memberNameEn: memberData?.full_name_en || null,
           city: memberData?.city || null,
           cityEn: memberData?.city_en || null,
           photoUrl: memberData?.photo_url || null,
-          familyId: fam?.id || null,
+          familyId: familyId,
         });
         setLoading(false);
       }
