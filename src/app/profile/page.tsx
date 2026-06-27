@@ -108,9 +108,25 @@ export default function ProfilePage() {
   const photoSrc = photoPreview || profile?.photoUrl;
 
   return (
-    <div className="min-h-screen bg-[var(--cream)] pb-20">
+    <div className="min-h-screen bg-[var(--cream)] pb-24">
+      {/* Entrance animation */}
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          .fade-up   { animation: fadeUp var(--dur) var(--ease-out) both; }
+          .fade-up-d { animation: fadeUp var(--dur) var(--ease-out) .1s both; }
+          .fade-up-d2 { animation: fadeUp var(--dur) var(--ease-out) .18s both; }
+        }
+      `}</style>
+
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-5 py-3">
+      <header
+        className="sticky top-0 z-10 border-b border-[var(--hairline)] px-5 pb-3 shadow-[var(--shadow-header)]"
+        style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
+      >
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <button
             onClick={() => router.back()}
@@ -120,26 +136,26 @@ export default function ProfilePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="flex-1 font-display text-lg font-semibold text-[var(--ivory)]">
+          <h1 className="flex-1 font-display text-lg font-semibold text-[#F4E3C1]">
             {t("profile_title", lang)}
           </h1>
         </div>
       </header>
 
       <div className="mx-auto max-w-lg px-5 pt-6">
-        {/* Identity header */}
-        <div className="flex flex-col items-center">
+        {/* ── IDENTITY HERO ──────────────────────────────────────── */}
+        <div className="fade-up flex flex-col items-center">
           <div className="relative">
             {photoSrc ? (
               <img
                 src={photoSrc}
                 alt=""
-                className="h-24 w-24 rounded-full border-3 border-[var(--gold)]/40 object-cover cursor-pointer"
+                className="h-[88px] w-[88px] cursor-pointer rounded-full border-[1.5px] border-[var(--gold)] object-cover"
                 onClick={() => fileRef.current?.click()}
               />
             ) : (
               <div
-                className="flex h-24 w-24 cursor-pointer items-center justify-center rounded-full border-3 border-[var(--gold)]/40 bg-[var(--ivory)] font-display text-3xl font-bold text-[var(--maroon)]"
+                className="flex h-[88px] w-[88px] cursor-pointer items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-3xl font-bold text-[var(--maroon)]"
                 onClick={() => fileRef.current?.click()}
               >
                 {name?.charAt(0) || "?"}
@@ -166,54 +182,54 @@ export default function ProfilePage() {
             {name || t("profile_your_account", lang)}
           </h2>
           {city && (
-            <p className="mt-1 text-sm text-[var(--gold-deep)]">{city}</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">{city}</p>
           )}
         </div>
 
-        {/* Account info */}
-        <div className="mt-8">
-          <h3 className="mb-2 font-display text-sm font-semibold uppercase tracking-wider text-[var(--gold-deep)]">
+        {/* ── ACCOUNT INFO ───────────────────────────────────────── */}
+        <div className="fade-up-d mt-8">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
             {t("profile_account_info", lang)}
           </h3>
-          <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-warm)] py-2.5">
-              <span className="shrink-0 text-sm text-[var(--gold-deep)]">{t("profile_login_email", lang)}</span>
+          <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--hairline)] py-2.5">
+              <span className="shrink-0 text-sm text-[var(--muted)]">{t("profile_login_email", lang)}</span>
               <span className="truncate text-sm font-medium text-[var(--maroon-deep)]">{profile?.email}</span>
             </div>
             {profile?.memberId && (
               <div className="flex justify-between py-2.5">
-                <span className="text-sm text-[var(--gold-deep)]">{t("profile_member_id", lang)}</span>
-                <span className="text-sm font-medium text-[var(--muted)]">{profile.memberId}</span>
+                <span className="text-sm text-[var(--muted)]">{t("profile_member_id", lang)}</span>
+                <span className="text-sm font-medium tracking-wide text-[var(--muted)]">{profile.memberId}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Settings */}
-        <div className="mt-6">
-          <h3 className="mb-2 font-display text-sm font-semibold uppercase tracking-wider text-[var(--gold-deep)]">
+        {/* ── SETTINGS ───────────────────────────────────────────── */}
+        <div className="fade-up-d mt-6">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
             {t("profile_settings", lang)}
           </h3>
-          <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+          <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
             <div className="flex items-center justify-between py-1">
-              <span className="text-sm text-[var(--gold-deep)]">{t("profile_language", lang)}</span>
-              <div className="flex overflow-hidden rounded-lg border border-[var(--border-warm)]">
+              <span className="text-sm text-[var(--muted)]">{t("profile_language", lang)}</span>
+              <div className="flex overflow-hidden rounded-[var(--r-sm)] border border-[#ECE0C8]">
                 <button
                   onClick={() => { if (lang !== "en") toggleLang(); }}
-                  className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
                     lang === "en"
                       ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                      : "bg-white text-[var(--maroon-deep)] hover:bg-[var(--cream-panel)]"
+                      : "bg-[var(--raised)] text-[var(--maroon-deep)] hover:bg-[var(--cream-panel)]"
                   }`}
                 >
                   English
                 </button>
                 <button
                   onClick={() => { if (lang !== "hi") toggleLang(); }}
-                  className={`px-4 py-1.5 text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
                     lang === "hi"
                       ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                      : "bg-white text-[var(--maroon-deep)] hover:bg-[var(--cream-panel)]"
+                      : "bg-[var(--raised)] text-[var(--maroon-deep)] hover:bg-[var(--cream-panel)]"
                   }`}
                 >
                   हिंदी
@@ -223,37 +239,35 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Quick actions */}
+        {/* ── QUICK ACTIONS ──────────────────────────────────────── */}
         {profile?.memberId && (
-          <div className="mt-6">
-            <h3 className="mb-2 font-display text-sm font-semibold uppercase tracking-wider text-[var(--gold-deep)]">
+          <div className="fade-up-d2 mt-6">
+            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
               {t("profile_actions", lang)}
             </h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => router.push(`/family/${profile.memberId}?edit=1`)}
-                className="flex w-full items-center justify-between rounded-[12px] border border-[var(--border-card)] bg-white px-4 py-3.5 shadow-[0_1px_3px_rgba(110,30,42,0.06)] transition-colors hover:bg-[var(--cream-panel)]"
-              >
-                <span className="text-sm font-medium text-[var(--maroon-deep)]">
-                  {t("profile_edit_details", lang)}
-                </span>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
+            <button
+              onClick={() => router.push(`/family/${profile.memberId}?edit=1`)}
+              className="flex w-full items-center justify-between rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] px-4 py-3.5 shadow-card motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+            >
+              <span className="text-sm font-medium text-[var(--maroon-deep)]">
+                {t("profile_edit_details", lang)}
+              </span>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--gold)] opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
         )}
 
-        {/* Logout */}
+        {/* ── LOGOUT ─────────────────────────────────────────────── */}
         <button
           onClick={handleLogout}
-          className="mt-8 w-full rounded-[12px] border border-[var(--border-warm)] py-3 text-sm font-medium text-[var(--maroon)] transition-colors hover:bg-[var(--cream-panel)]"
+          className="fade-up-d2 mt-8 min-h-[48px] w-full rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--maroon)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
         >
           {t("logout", lang)}
         </button>
 
-        {/* About / Automiq moment */}
+        {/* ── ABOUT / AUTOMIQ ────────────────────────────────────── */}
         <div className="mt-12 flex flex-col items-center pb-4">
           <div className="h-px w-16 bg-[var(--gold)]/25" />
           <div className="mt-6">
@@ -273,7 +287,7 @@ export default function ProfilePage() {
             href="https://www.automiqlabs.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-1 font-display text-base font-semibold text-[var(--maroon)] transition-colors hover:text-[var(--gold-deep)]"
+            className="mt-1 font-display text-base font-semibold text-[var(--maroon)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:text-[var(--gold-deep)]"
           >
             Automiq Labs
           </a>

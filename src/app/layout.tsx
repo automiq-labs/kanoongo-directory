@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, Noto_Serif_Devanagari, Noto_Sans_Devanagari, Inter } from "next/font/google";
+import { Fraunces, Noto_Serif_Devanagari, Noto_Sans_Devanagari, Inter } from "next/font/google";
 import { LanguageProvider } from "@/lib/language-context";
 import "./globals.css";
 
-const cormorant = Cormorant_Garamond({
-  variable: "--font-cormorant",
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
 const notoSerifDevanagari = Noto_Serif_Devanagari({
@@ -40,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="hi"
-      className={`${cormorant.variable} ${notoSerifDevanagari.variable} ${notoSansDevanagari.variable} ${inter.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${notoSerifDevanagari.variable} ${notoSansDevanagari.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">
         <LanguageProvider>{children}</LanguageProvider>

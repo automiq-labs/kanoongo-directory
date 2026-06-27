@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Member } from "@/lib/types";
 import { useLang } from "@/lib/language-context";
@@ -112,21 +113,24 @@ export default function DirectoryClient({
   return (
     <div className="min-h-screen bg-[var(--cream)] pb-20">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-4 py-3 shadow-sm">
+      <header
+        className="sticky top-0 z-10 border-b border-[var(--hairline)] px-4 pb-3 shadow-[var(--shadow-header)]"
+        style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
+      >
         <div className="mx-auto flex max-w-lg items-center justify-between">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="shrink-0">
               <Crest size={26} />
             </div>
-            <h1 className="truncate font-display text-[15px] font-semibold text-[var(--ivory)]">
+            <h1 className="truncate font-display text-[16px] font-semibold text-[#F4E3C1]">
               {t("app_title", lang)}
             </h1>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <LanguageToggle />
             <button
               onClick={() => router.push("/profile")}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[var(--gold)]/40 overflow-hidden transition-opacity hover:opacity-80"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] overflow-hidden motion-safe:transition-opacity motion-safe:duration-[var(--dur-fast)] hover:opacity-80"
             >
               {userAvatar.photoUrl ? (
                 <img src={userAvatar.photoUrl} alt="" className="h-full w-full object-cover" />
@@ -142,30 +146,40 @@ export default function DirectoryClient({
 
       <div className="mx-auto max-w-lg px-4 pt-4">
         {/* Search */}
-        <div className="mb-3">
+        <div className="relative mb-4">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--muted)]"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
           <input
             type="text"
             placeholder={t("search_placeholder", lang)}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-[10px] border border-[var(--border-warm)] bg-white px-4 py-3 text-[var(--maroon-deep)] placeholder-[var(--muted)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/20 focus:outline-none"
+            className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-[var(--raised)] py-3 pl-10 pr-4 text-[var(--maroon-deep)] placeholder-[var(--muted)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
           />
         </div>
 
-        {/* Filter chips */}
-        <div className="mb-4 flex flex-wrap gap-2">
+        {/* Filter row */}
+        <div className="mb-4 flex gap-2">
           <button
             onClick={() => {
               setFilterType("all");
               setFilterValue("");
             }}
-            className={`min-h-[36px] rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`min-h-[44px] flex-1 whitespace-nowrap rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
               filterType === "all"
-                ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                : "bg-white text-[var(--maroon)] border border-[var(--border-warm)]"
+                ? "bg-[var(--maroon)] text-[#F4E3C1] shadow-[0_2px_8px_rgba(110,30,42,0.25)]"
+                : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)]"
             }`}
           >
-            {t("filter_all", lang)} ({members.length})
+            {t("filter_all", lang)} <span className="text-[13px] opacity-80">({members.length})</span>
           </button>
 
           <select
@@ -179,10 +193,10 @@ export default function DirectoryClient({
                 setFilterValue("");
               }
             }}
-            className={`min-h-[36px] rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors appearance-none cursor-pointer ${
+            className={`min-h-[44px] flex-1 rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium appearance-none cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
               filterType === "city"
-                ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                : "bg-white text-[var(--maroon)] border border-[var(--border-warm)]"
+                ? "bg-[var(--maroon)] text-[#F4E3C1] shadow-[0_2px_8px_rgba(110,30,42,0.25)]"
+                : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)]"
             }`}
           >
             <option value="">🏙️ {t("filter_city", lang)}</option>
@@ -202,10 +216,10 @@ export default function DirectoryClient({
                 setFilterValue("");
               }
             }}
-            className={`min-h-[36px] rounded-[20px] px-3 py-1.5 text-sm font-medium transition-colors appearance-none cursor-pointer ${
+            className={`min-h-[44px] flex-1 rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium appearance-none cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
               filterType === "gotra"
-                ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                : "bg-white text-[var(--maroon)] border border-[var(--border-warm)]"
+                ? "bg-[var(--maroon)] text-[#F4E3C1] shadow-[0_2px_8px_rgba(110,30,42,0.25)]"
+                : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)]"
             }`}
           >
             <option value="">🔱 {t("filter_gotra", lang)}</option>
@@ -216,51 +230,103 @@ export default function DirectoryClient({
         </div>
 
         {/* Results count */}
-        <p className="mb-3 text-sm text-[var(--gold-deep)]">
-          {filtered.length} {t("members_found", lang)}
+        <p className="mb-4 font-display text-sm text-[var(--muted)]">
+          <span className="font-semibold text-[var(--maroon)]">{filtered.length}</span>{" "}
+          {t("members_found", lang)}
         </p>
 
-        {/* Member cards */}
-        <StaggerList className="space-y-[10px]">
-          {filtered.map((member, idx) => {
-            const name = bi(member.full_name, member.full_name_en, lang);
-            const city = bi(member.city, member.city_en, lang);
-            const gotra = bi(member.gotra, member.gotra_en, lang);
+        {/* Member list with lineage thread */}
+        <div className="relative">
+          {/* Gold vertical thread */}
+          <div
+            className="absolute left-[8px] sm:left-[14px] top-0 bottom-0 w-[2px] opacity-70"
+            style={{ background: "linear-gradient(to bottom, transparent, var(--gold) 6%, var(--gold) 94%, transparent)" }}
+          />
 
-            const cardEl = (
-              <button
-                onClick={() => router.push(`/family/${member.member_id}`)}
-                className="flex w-full items-center gap-3 rounded-[12px] border border-[var(--border-card)] bg-white p-4 text-left shadow-[0_1px_3px_rgba(110,30,42,0.06)] transition-shadow hover:shadow-md active:bg-[var(--cream-panel)]"
-              >
-                {member.photo_url ? (
-                  <img src={member.photo_url} alt="" className="h-[46px] w-[46px] shrink-0 rounded-full border-2 border-[var(--gold)]/30 object-cover" />
-                ) : (
-                  <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border-2 border-[var(--gold)]/30 bg-[var(--ivory)] font-display text-lg font-bold text-[var(--maroon)]">
-                    {name?.charAt(0) || "?"}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-display text-[18px] font-semibold text-[var(--maroon-deep)]">
-                    {name}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-[var(--gold-deep)]">
-                    {city && <span>{city}</span>}
-                    {gotra && <span>{t("label_gotra", lang)}: {gotra}</span>}
-                  </div>
+          <StaggerList className="space-y-2 sm:space-y-[10px]">
+            {filtered.map((member, idx) => {
+              const name = bi(member.full_name, member.full_name_en, lang);
+              const city = bi(member.city, member.city_en, lang);
+              const gotra = bi(member.gotra, member.gotra_en, lang);
+
+              const cardEl = (
+                <div className="relative pl-[18px] sm:pl-[24px]">
+                  {/* Diamond node */}
+                  <div className="absolute left-[4px] sm:left-[10px] top-1/2 z-[1] h-[8px] w-[8px] sm:h-[9px] sm:w-[9px] -translate-y-1/2 rotate-45 border-[1.5px] border-[var(--gold)] bg-[var(--paper)]" />
+                  {/* Tick connecting node → card */}
+                  <div className="absolute left-[10px] sm:left-[14px] top-1/2 h-px w-[8px] sm:w-[10px] -translate-y-1/2 bg-[var(--gold)] opacity-60" />
+
+                  <Link
+                    href={`/family/${member.member_id}`}
+                    prefetch
+                    className="flex w-full items-center gap-2.5 sm:gap-3 rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-3.5 sm:px-[15px] sm:py-[14px] text-left shadow-card motion-safe:transition-[transform,box-shadow] motion-safe:duration-[var(--dur)] motion-safe:[transition-timing-function:var(--ease-out)] hover:-translate-y-[3px] hover:shadow-lift"
+                  >
+                    {/* Avatar */}
+                    {member.photo_url ? (
+                      <img
+                        src={member.photo_url}
+                        alt=""
+                        className={`h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-full border-[1.5px] border-[var(--gold)] object-cover${
+                          member.is_deceased ? " saturate-[.55]" : ""
+                        }`}
+                      />
+                    ) : (
+                      <div
+                        className={`flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full border-[1.5px] bg-[var(--cream-panel)] font-display text-[17px] sm:text-[19px] font-bold text-[var(--maroon)]${
+                          member.is_deceased
+                            ? " border-[var(--gold)]/55 saturate-[.55]"
+                            : " border-[var(--gold)]"
+                        }`}
+                      >
+                        {name?.charAt(0) || "?"}
+                      </div>
+                    )}
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-display text-[17px] sm:text-[18px] font-semibold text-[var(--maroon-deep)]">
+                        {name}
+                      </p>
+                      <div className="mt-[2px] flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--muted)]">
+                        {member.is_deceased && (
+                          <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--gold-deep)]">
+                            In remembrance
+                          </span>
+                        )}
+                        {member.is_deceased && (city || gotra) && (
+                          <span className="text-[var(--gold)] opacity-60">·</span>
+                        )}
+                        {city && <span>{city}</span>}
+                        {city && gotra && (
+                          <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />
+                        )}
+                        {gotra && <span>{t("label_gotra", lang)}: {gotra}</span>}
+                      </div>
+                    </div>
+
+                    {/* Chevron */}
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4 sm:h-5 sm:w-5 shrink-0 ml-auto text-[var(--gold)] opacity-80"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </Link>
                 </div>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0 text-[var(--gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            );
+              );
 
-            return idx < 10 ? (
-              <StaggerItem key={member.member_id}>{cardEl}</StaggerItem>
-            ) : (
-              <div key={member.member_id}>{cardEl}</div>
-            );
-          })}
-        </StaggerList>
+              return idx < 10 ? (
+                <StaggerItem key={member.member_id}>{cardEl}</StaggerItem>
+              ) : (
+                <div key={member.member_id}>{cardEl}</div>
+              );
+            })}
+          </StaggerList>
+        </div>
 
         {filtered.length === 0 && (
           <div className="py-12 text-center text-[var(--muted)]">

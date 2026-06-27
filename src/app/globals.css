@@ -1,25 +1,59 @@
 @import "tailwindcss";
 
 :root {
+  /* ── Existing palette (unchanged unless noted) ──────────────── */
   --maroon: #6E1E2A;
   --maroon-deep: #3A1218;
   --gold: #C9962E;
   --gold-deep: #9A6B16;
   --gold-light: #D2A23A;
-  --cream: #FBF6EC;
-  --cream-panel: #F6EEDD;
-  --paper: #FFFFFF;
+  --cream: #FAF6EF;              /* retuned — warmer paper canvas */
+  --cream-panel: #F3EAD8;        /* retuned */
+  --paper: #FAF6EF;
   --border-warm: #E5D5B8;
   --border-card: #EADCC0;
   --ivory: #F4E3C1;
-  --muted: #888780;
+  --muted: #8A7E72;              /* retuned — warmer */
+
+  /* ── New semantic tokens ────────────────────────────────────── */
+  --ink: #2A0E12;
+  --raised: #FFFFFF;
+  --text-body: #2E211F;
+  --gold-foil: #E3C16A;
+  --hairline: rgba(201, 150, 46, 0.38);
+
+  /* ── Radii ──────────────────────────────────────────────────── */
+  --r-sm: 10px;
+  --r: 14px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ── Shadows ────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 2px rgba(58, 18, 24, 0.05), 0 14px 32px -14px rgba(58, 18, 24, 0.20);
+  --shadow-lift: 0 2px 4px rgba(58, 18, 24, 0.06), 0 22px 44px -16px rgba(58, 18, 24, 0.30);
+  --shadow-header: 0 1px 0 rgba(201, 150, 46, 0.25);
+
+  /* ── Motion ─────────────────────────────────────────────────── */
+  --dur-fast: 180ms;
+  --dur: 280ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @theme inline {
   --color-background: var(--cream);
   --color-foreground: var(--maroon-deep);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-panel: var(--cream-panel);
+  --color-maroon: var(--maroon);
+  --color-gold: var(--gold);
+  --color-gold-foil: var(--gold-foil);
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
   --font-sans: var(--font-inter), var(--font-noto-sans-devanagari), system-ui, sans-serif;
-  --font-serif: var(--font-cormorant), Georgia, serif;
+  --font-serif: var(--font-fraunces), Georgia, serif;
   --font-serif-hi: var(--font-noto-serif-devanagari), serif;
 }
 
@@ -34,5 +68,5 @@ body.lang-en {
 
 /* Utility: serif for names */
 .font-display {
-  font-family: var(--font-cormorant), var(--font-noto-serif-devanagari), Georgia, serif;
+  font-family: var(--font-fraunces), var(--font-noto-serif-devanagari), Georgia, serif;
 }

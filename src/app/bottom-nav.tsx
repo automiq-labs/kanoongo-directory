@@ -46,7 +46,13 @@ export default function BottomNav() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--border-warm)] bg-white">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-10 border-t border-[var(--hairline)] bg-[var(--raised)]"
+      style={{
+        paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
+        boxShadow: "0 -1px 0 rgba(201,150,46,.25)",
+      }}
+    >
       <div className="mx-auto flex max-w-lg">
         {navItems.map((item) => {
           if (!item.href) return null;
@@ -60,31 +66,54 @@ export default function BottomNav() {
             <button
               key={item.labelKey}
               onClick={() => router.push(item.href!)}
-              className={`flex flex-1 flex-col items-center py-3 ${
+              className={`relative flex min-h-[56px] flex-1 flex-col items-center justify-center pt-3 pb-1 ${
                 isActive ? "text-[var(--maroon)]" : "text-[var(--muted)]"
               }`}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d={item.icon}
-                />
-              </svg>
-              <span className="mt-1 truncate text-[10px] font-medium leading-tight">
+              {/* Icon with active pill behind it */}
+              <span className="relative flex items-center justify-center">
+                {isActive && (
+                  <span
+                    className="nav-pill absolute h-[30px] w-[52px] rounded-full"
+                    style={{ background: "rgba(201,150,46,0.14)" }}
+                  />
+                )}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="relative h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d={item.icon}
+                  />
+                </svg>
+              </span>
+              <span className="mt-1 truncate text-[11px] font-medium leading-tight">
                 {t(item.labelKey, lang)}
               </span>
             </button>
           );
         })}
       </div>
+
+      {/* Active-pill entrance animation */}
+      <style>{`
+        @keyframes pillIn {
+          from { opacity: 0; transform: scale(0.85); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .nav-pill {
+          animation: pillIn var(--dur) var(--ease-out) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .nav-pill { animation: none; }
+        }
+      `}</style>
     </nav>
   );
 }
