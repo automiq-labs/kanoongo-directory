@@ -39,6 +39,8 @@ interface SelfMatch {
   marital_status: string | null;
   already_claimed: boolean;
   match_score: number;
+  source: "member" | "child";
+  match_id: string;
 }
 
 type Step = "code" | "name" | "parent" | "confirm_self" | "account";
@@ -205,8 +207,8 @@ export default function RegisterPage() {
 
   // ── Step 3b — self match ──────────────────────────────────────────────────
 
-  function handleClaimSelf(memberId: string) {
-    setClaimMemberId(memberId);
+  function handleClaimSelf(matchId: string) {
+    setClaimMemberId(matchId);
     setStep("account");
   }
 
@@ -490,7 +492,7 @@ export default function RegisterPage() {
                   // This member already has a login — don't allow claiming
                   return (
                     <div
-                      key={m.member_id}
+                      key={m.match_id}
                       className="rounded-xl border border-[var(--border-card)] bg-[var(--cream-panel)] p-4"
                     >
                       <div className="flex items-center gap-3">
@@ -531,8 +533,8 @@ export default function RegisterPage() {
                 // Claimable — let user tap to claim
                 return (
                   <button
-                    key={m.member_id}
-                    onClick={() => handleClaimSelf(m.member_id)}
+                    key={m.match_id}
+                    onClick={() => handleClaimSelf(m.match_id)}
                     className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-card)] bg-[var(--cream)] p-4 text-left transition-colors hover:bg-[var(--border-warm)] active:bg-[var(--border-warm)]"
                   >
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--ivory)] text-lg font-bold text-[var(--maroon)]">
