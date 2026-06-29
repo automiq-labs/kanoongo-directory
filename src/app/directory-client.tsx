@@ -111,13 +111,13 @@ export default function DirectoryClient({
   }
 
   return (
-    <div className="min-h-screen bg-[var(--cream)] pb-20">
+    <div className="min-h-screen overflow-x-hidden bg-[var(--cream)] pb-20 md:ml-[240px] md:pb-8">
       {/* Header */}
       <header
         className="sticky top-0 z-10 border-b border-[var(--hairline)] px-4 pb-3 shadow-[var(--shadow-header)]"
         style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
       >
-        <div className="mx-auto flex max-w-lg items-center justify-between">
+        <div className="mx-auto flex max-w-lg md:max-w-2xl items-center justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <div className="shrink-0">
               <Crest size={26} />
@@ -130,7 +130,7 @@ export default function DirectoryClient({
             <LanguageToggle />
             <button
               onClick={() => router.push("/profile")}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] overflow-hidden motion-safe:transition-opacity motion-safe:duration-[var(--dur-fast)] hover:opacity-80"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] overflow-hidden motion-safe:transition-opacity motion-safe:duration-[var(--dur-fast)] hover:opacity-80 md:hidden"
             >
               {userAvatar.photoUrl ? (
                 <img src={userAvatar.photoUrl} alt="" className="h-full w-full object-cover" />
@@ -144,7 +144,7 @@ export default function DirectoryClient({
         </div>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 pt-4">
+      <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
         {/* Search */}
         <div className="relative mb-4">
           <svg
@@ -173,7 +173,7 @@ export default function DirectoryClient({
               setFilterType("all");
               setFilterValue("");
             }}
-            className={`min-h-[44px] flex-1 whitespace-nowrap rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+            className={`min-h-[44px] min-w-0 flex-1 whitespace-nowrap rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
               filterType === "all"
                 ? "bg-[var(--maroon)] text-[#F4E3C1] shadow-[0_2px_8px_rgba(110,30,42,0.25)]"
                 : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)]"
@@ -193,7 +193,7 @@ export default function DirectoryClient({
                 setFilterValue("");
               }
             }}
-            className={`min-h-[44px] flex-1 rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium appearance-none cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+            className={`min-h-[44px] min-w-0 flex-1 overflow-hidden rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium appearance-none cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
               filterType === "city"
                 ? "bg-[var(--maroon)] text-[#F4E3C1] shadow-[0_2px_8px_rgba(110,30,42,0.25)]"
                 : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)]"
@@ -216,7 +216,7 @@ export default function DirectoryClient({
                 setFilterValue("");
               }
             }}
-            className={`min-h-[44px] flex-1 rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium appearance-none cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+            className={`min-h-[44px] min-w-0 flex-1 overflow-hidden rounded-[var(--r-sm)] px-3 py-1.5 text-sm font-medium appearance-none cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
               filterType === "gotra"
                 ? "bg-[var(--maroon)] text-[#F4E3C1] shadow-[0_2px_8px_rgba(110,30,42,0.25)]"
                 : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)]"

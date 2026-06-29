@@ -108,7 +108,7 @@ export default function ProfilePage() {
   const photoSrc = photoPreview || profile?.photoUrl;
 
   return (
-    <div className="min-h-screen bg-[var(--cream)] pb-24">
+    <div className="min-h-screen bg-[var(--cream)] pb-24 md:ml-[240px] md:pb-8">
       {/* Entrance animation */}
       <style>{`
         @keyframes fadeUp {
@@ -127,7 +127,7 @@ export default function ProfilePage() {
         className="sticky top-0 z-10 border-b border-[var(--hairline)] px-5 pb-3 shadow-[var(--shadow-header)]"
         style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
       >
-        <div className="mx-auto flex max-w-lg items-center gap-3">
+        <div className="mx-auto flex max-w-lg md:max-w-2xl items-center gap-3">
           <button
             onClick={() => router.back()}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
@@ -142,7 +142,7 @@ export default function ProfilePage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-lg px-5 pt-6">
+      <div className="mx-auto max-w-lg md:max-w-2xl px-5 pt-6">
         {/* ── IDENTITY HERO ──────────────────────────────────────── */}
         <div className="fade-up flex flex-col items-center">
           <div className="relative">

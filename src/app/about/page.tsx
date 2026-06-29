@@ -11,10 +11,13 @@ export default function AboutPage() {
   const router = useRouter();
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--cream)]">
+    <div className="flex min-h-screen flex-col bg-[var(--cream)] md:ml-[240px]">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-5 py-3">
-        <div className="mx-auto flex max-w-lg items-center gap-3">
+      <header
+        className="sticky top-0 z-10 border-b border-[var(--hairline)] px-5 pb-3 shadow-[var(--shadow-header)]"
+        style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
+      >
+        <div className="mx-auto flex max-w-lg md:max-w-2xl items-center gap-3">
           <button
             onClick={() => router.back()}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
@@ -23,7 +26,7 @@ export default function AboutPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="flex-1 font-display text-lg font-semibold text-[var(--ivory)]">
+          <h1 className="flex-1 font-display text-lg font-semibold text-[#F4E3C1]">
             {t("about_title", lang)}
           </h1>
           <LanguageToggle />

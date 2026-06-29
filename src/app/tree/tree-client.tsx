@@ -68,7 +68,7 @@ function AnimatedChildren({
       style={{
         height: height === "auto" ? "auto" : `${height}px`,
         overflow: height === "auto" ? "visible" : "hidden",
-        transition: "height 220ms ease-in-out",
+        transition: "height var(--dur) var(--ease-out)",
       }}
       onTransitionEnd={handleTransitionEnd}
     >
@@ -85,9 +85,11 @@ const MAX_INDENT_DEPTH = 8; // cap indentation beyond this
 function TreeRow({
   node,
   depth,
+  isRoot = false,
 }: {
   node: TreeNode;
   depth: number;
+  isRoot?: boolean;
 }) {
   const { lang } = useLang();
   const [expanded, setExpanded] = useState(false);
@@ -153,24 +155,25 @@ function TreeRow({
     node.spouses.length > 0
       ? bi(node.spouses[0].full_name, node.spouses[0].full_name_en, lang)
       : null;
+  const spouseDeceased = node.spouses.length > 0 && !!node.spouses[0].date_of_death;
 
   return (
     <div>
       {/* This row */}
       <div
-        className="flex items-center gap-2 py-2.5"
-        style={{ paddingLeft: `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX}px` }}
+        className={`flex items-center gap-2.5 rounded-[var(--r)] py-3 ${isRoot ? "px-1" : "px-2 motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"}`}
+        style={{ paddingLeft: isRoot ? undefined : `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX}px` }}
       >
         {/* Expand/collapse chevron */}
         {hasChildren ? (
           <button
             onClick={handleToggle}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--gold)] transition-colors hover:bg-[var(--cream-panel)] active:bg-[var(--cream-panel)]"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--gold)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] active:bg-[var(--cream-panel)]"
             aria-label={expanded ? "Collapse" : "Expand"}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className={`h-4 w-4 transition-transform duration-200 ${
+              className={`h-4 w-4 motion-safe:transition-transform motion-safe:duration-[var(--dur)] ${
                 expanded ? "rotate-90" : ""
               }`}
               fill="none"
@@ -186,48 +189,63 @@ function TreeRow({
             </svg>
           </button>
         ) : (
-          <span className="w-7 shrink-0" />
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+            <span className="h-[5px] w-[5px] rounded-full bg-[var(--gold)] opacity-40" />
+          </span>
         )}
 
         {/* Name + spouse */}
         <div className="min-w-0 flex-1">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-1.5">
-              <Link
-                href={`/family/${node.member_id}`}
-                className="font-display text-[15px] font-semibold text-[var(--maroon-deep)] hover:text-[var(--maroon)]"
-              >
-                {name}
-              </Link>
-              {spouseName && (
-                <span className="text-[13px] text-[var(--muted)]">
-                  · {t("tree_with", lang)}{" "}
-                  <span className="text-[var(--gold-deep)]">
-                    {spouseName}
-                  </span>
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
+            <Link
+              href={`/family/${node.member_id}`}
+              className={`font-display font-semibold hover:text-[var(--maroon)] ${
+                isRoot ? "text-[17px]" : "text-[15px]"
+              } ${node.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}
+            >
+              {name}
+            </Link>
+            {spouseName && (
+              <span className="flex items-center gap-1 text-[13px] text-[var(--muted)]">
+                <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />
+                {t("tree_with", lang)}{" "}
+                <span className={spouseDeceased ? "text-[var(--muted)]" : "text-[var(--gold-deep)]"}>
+                  {spouseName}
                 </span>
-              )}
-            </div>
+              </span>
+            )}
           </div>
 
-          {/* Child count badge */}
+          {/* Child count pill */}
           {hasChildren && !expanded && (
             <button
               onClick={handleToggle}
-              className="mt-0.5 inline-flex items-center rounded-full bg-[var(--cream-panel)] px-2 py-0.5 text-xs text-[var(--gold-deep)]"
+              className="mt-1 inline-flex items-center gap-1 rounded-full border border-[var(--gold)]/20 bg-[var(--cream-panel)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream)]"
             >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
               {node.childCount} {t("tree_children_count", lang)}
             </button>
           )}
         </div>
+
+        {/* Navigate chevron for root nodes */}
+        {isRoot && (
+          <Link href={`/family/${node.member_id}`} className="flex h-7 w-7 shrink-0 items-center justify-center text-[var(--gold)] opacity-60">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
+        )}
       </div>
 
       {/* Children (expanded) */}
       {hasChildren && (
         <AnimatedChildren expanded={expanded}>
           <div className="relative" style={{ marginLeft: `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX + 10}px` }}>
-            {/* Connector line */}
-            <div className="absolute left-0 top-0 bottom-3 w-px bg-[var(--gold)]/20" />
+            {/* Gold vertical spine */}
+            <div className="absolute left-[3px] top-0 bottom-3 w-[2px] bg-[var(--gold)] opacity-50" />
 
             {loading && !children && (
               <p
@@ -240,9 +258,9 @@ function TreeRow({
 
             {children?.map((child) => (
               <div key={child.member_id} className="relative">
-                {/* Horizontal connector tick */}
+                {/* Horizontal connector joint */}
                 <div
-                  className="absolute left-0 top-[18px] h-px w-3 bg-[var(--gold)]/20"
+                  className="absolute left-[3px] top-[22px] h-[2px] w-3 bg-[var(--gold)] opacity-50"
                 />
                 <div style={{ paddingLeft: "4px" }}>
                   <TreeRow node={child} depth={0} />
@@ -262,15 +280,29 @@ export default function TreeClient({ roots }: { roots: TreeNode[] }) {
   const { lang } = useLang();
 
   return (
-    <div className="min-h-screen bg-[var(--cream)] pb-20">
+    <div className="min-h-screen bg-[var(--cream)] pb-24 md:ml-[240px] md:pb-8">
+      {/* Entrance animation */}
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          .tree-fade { animation: fadeUp var(--dur) var(--ease-out) both; }
+        }
+      `}</style>
+
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-4 py-3 shadow-sm">
-        <div className="mx-auto flex max-w-lg items-center justify-between">
-          <div className="flex min-w-0 items-center gap-1.5">
+      <header
+        className="sticky top-0 z-10 border-b border-[var(--hairline)] px-4 pb-3 shadow-[var(--shadow-header)]"
+        style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
+      >
+        <div className="mx-auto flex max-w-lg md:max-w-2xl items-center justify-between">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="shrink-0">
               <Crest size={24} />
             </div>
-            <h1 className="truncate font-display text-[15px] font-semibold text-[var(--ivory)]">
+            <h1 className="truncate font-display text-[16px] font-semibold text-[#F4E3C1]">
               {t("tree_title", lang)}
             </h1>
           </div>
@@ -278,14 +310,15 @@ export default function TreeClient({ roots }: { roots: TreeNode[] }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-lg px-4 pt-4">
-        <div className="space-y-2">
-          {roots.map((root) => (
+      <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
+        <div className="space-y-3">
+          {roots.map((root, i) => (
             <div
               key={root.member_id}
-              className="rounded-[12px] border border-[var(--border-card)] bg-white px-3 py-1 shadow-[0_1px_3px_rgba(110,30,42,0.06)]"
+              className="tree-fade rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] px-3 py-1 shadow-card"
+              style={{ animationDelay: `${i * 60}ms` }}
             >
-              <TreeRow node={root} depth={0} />
+              <TreeRow node={root} depth={0} isRoot />
             </div>
           ))}
         </div>

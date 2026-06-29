@@ -23,10 +23,9 @@ type LineageMember = Pick<
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="mt-6 mb-3">
-      <h2 className="flex items-center gap-2 font-display text-base font-semibold text-[var(--maroon)]">
+      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
         {children}
       </h2>
-      <div className="mt-1 h-px bg-[var(--gold)]/25" />
     </div>
   );
 }
@@ -52,7 +51,7 @@ function PhotoAvatar({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const src = previewUrl || photoUrl;
-  const dim = size === "lg" ? "h-14 w-14 text-2xl" : "h-10 w-10 text-lg";
+  const dim = size === "lg" ? "h-[88px] w-[88px] text-3xl" : "h-10 w-10 text-lg";
 
   function handleClick() {
     if (editing && fileRef.current) fileRef.current.click();
@@ -64,12 +63,12 @@ function PhotoAvatar({
         <img
           src={src}
           alt=""
-          className={`${dim} rounded-full object-cover border-2 border-[var(--gold)]/30 ${editing ? "cursor-pointer ring-2 ring-[var(--gold)] ring-offset-1" : ""}`}
+          className={`${dim} rounded-full object-cover border-[1.5px] border-[var(--gold)] ${editing ? "cursor-pointer ring-2 ring-[var(--gold)] ring-offset-1" : ""}`}
           onClick={handleClick}
         />
       ) : (
         <div
-          className={`flex ${dim} items-center justify-center rounded-full bg-[var(--ivory)] font-display font-bold text-[var(--maroon)] border-2 border-[var(--gold)]/30 ${editing ? "cursor-pointer ring-2 ring-[var(--gold)] ring-offset-1" : ""}`}
+          className={`flex ${dim} items-center justify-center rounded-full bg-[var(--cream-panel)] font-display font-bold text-[var(--maroon)] border-[1.5px] border-[var(--gold)] ${editing ? "cursor-pointer ring-2 ring-[var(--gold)] ring-offset-1" : ""}`}
           onClick={handleClick}
         >
           {fallbackInitial}
@@ -91,7 +90,7 @@ function PhotoAvatar({
           {src && onRemove && (
             <button
               onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white shadow"
+              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-xs text-white shadow" style={{ background: "rgba(110,30,42,0.8)" }}
               type="button"
             >
               ×
@@ -114,8 +113,8 @@ function InfoRow({
 }) {
   if (!value) return null;
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-[var(--border-warm)] py-2.5">
-      <span className="shrink-0 text-sm text-[var(--gold-deep)]">{label}</span>
+    <div className="flex items-start justify-between gap-3 border-b border-[var(--hairline)] py-2.5 last:border-0">
+      <span className="shrink-0 text-sm text-[var(--muted)]">{label}</span>
       <span className="min-w-0 break-words text-right text-sm font-medium text-[var(--maroon-deep)]">
         {value}
       </span>
@@ -137,13 +136,13 @@ function EditRow({
   type?: "text" | "email" | "tel" | "date";
 }) {
   return (
-    <div className="border-b border-[var(--border-warm)] py-2">
-      <label className="mb-1 block text-sm text-[var(--gold-deep)]">{label}</label>
+    <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-[var(--border-warm)] bg-[var(--cream)]/50 px-3 py-2 text-sm text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-1 focus:ring-[var(--gold)]/20 focus:outline-none"
+        className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-sm text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
       />
     </div>
   );
@@ -688,10 +687,13 @@ export default function FamilyCardClient({
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[var(--cream)] pb-20">
+    <div className="min-h-screen bg-[var(--cream)] pb-24 md:ml-[240px] md:pb-8">
       {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-[var(--gold)]/20 bg-[var(--maroon)] px-4 py-3 shadow-sm">
-        <div className="mx-auto flex max-w-lg items-center gap-3">
+      <header
+        className="sticky top-0 z-10 border-b border-[var(--hairline)] px-4 pb-3 shadow-[var(--shadow-header)]"
+        style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
+      >
+        <div className="mx-auto flex max-w-lg md:max-w-2xl items-center gap-3">
           <button
             onClick={() => router.back()}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
@@ -700,7 +702,7 @@ export default function FamilyCardClient({
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="flex-1 text-lg font-bold text-[var(--ivory)] font-display">
+          <h1 className="flex-1 font-display text-lg font-semibold text-[#F4E3C1]">
             {t("family_detail", lang)}
           </h1>
           <LanguageToggle />
@@ -709,40 +711,39 @@ export default function FamilyCardClient({
 
       {/* Toast */}
       {toast && (
-        <div className={`mx-auto mt-2 max-w-lg px-4`}>
+        <div className="mx-auto mt-2 max-w-lg md:max-w-2xl px-4">
           <div
-            className={`rounded-lg px-4 py-2.5 text-sm font-medium ${
-              toast.type === "success"
-                ? "bg-green-50 text-green-700"
-                : "bg-red-50 text-red-600"
-            }`}
+            className="rounded-[var(--r-sm)] px-4 py-2.5 text-sm font-medium"
+            style={{ background: toast.type === "success" ? "rgba(22,101,52,0.08)" : "rgba(110,30,42,0.06)" }}
           >
-            {toast.msg}
+            <span className={toast.type === "success" ? "text-green-700" : "text-[var(--maroon-deep)]"}>
+              {toast.msg}
+            </span>
           </div>
         </div>
       )}
 
       {/* Photo error toast */}
       {photoError && (
-        <div className="mx-auto mt-2 max-w-lg px-4">
-          <div className="rounded-lg bg-red-50 px-4 py-2.5 text-sm font-medium text-red-600">
+        <div className="mx-auto mt-2 max-w-lg md:max-w-2xl px-4">
+          <div className="rounded-[var(--r-sm)] px-4 py-2.5 text-sm font-medium text-[var(--maroon-deep)]" style={{ background: "rgba(110,30,42,0.06)" }}>
             {photoError}
           </div>
         </div>
       )}
 
-      <div className="mx-auto max-w-lg px-4 pt-4">
+      <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
 
         {/* Edit mode language hint */}
         {editing && (
-          <div className="mb-3 rounded-lg bg-[var(--cream-panel)] px-3 py-2 text-center text-xs text-[var(--gold-deep)]">
+          <div className="mb-3 rounded-[var(--r-sm)] bg-[var(--cream-panel)] px-3 py-2 text-center text-xs text-[var(--muted)]">
             {lang === "en" ? t("editing_in_en", lang) : t("editing_in_hi", lang)}
           </div>
         )}
 
-        {/* ── MEMBER NAME CARD ─────────────────────────────────────────── */}
+        {/* ── MEMBER IDENTITY CARD ────────────────────────────────────────── */}
         <FadeIn>
-        <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-5 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+        <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-5 shadow-card">
           <div className="flex items-center gap-4">
             <PhotoAvatar
               photoUrl={m.photo_url}
@@ -767,16 +768,21 @@ export default function FamilyCardClient({
                 />
               ) : (
                 <>
-                  <h2 className="font-display text-lg font-semibold leading-snug text-[var(--maroon-deep)] sm:text-xl">
+                  <h2 className="font-display text-xl font-semibold leading-snug text-[var(--maroon-deep)]">
                     {name}
                   </h2>
+                  {m.is_deceased && (
+                    <span className="mt-1 inline-block text-[11px] font-medium uppercase tracking-wider text-[var(--gold-deep)]">
+                      In remembrance
+                    </span>
+                  )}
                   {isOwnCard && !editing && (
                     <span className="mt-1 inline-flex items-center rounded-full border border-[var(--gold)]/20 bg-[var(--cream-panel)] px-2 py-0.5 text-[10px] font-medium tracking-wide text-[var(--gold-deep)] font-sans">
                       {t("this_is_you", lang)}
                     </span>
                   )}
                   {gotra && (
-                    <p className="mt-0.5 text-sm text-[var(--gold-deep)]">
+                    <p className="mt-0.5 text-sm text-[var(--muted)]">
                       {t("label_gotra", lang)}: {gotra}
                     </p>
                   )}
@@ -784,11 +790,11 @@ export default function FamilyCardClient({
               )}
             </div>
 
-            {/* Edit/Save/Cancel buttons */}
+            {/* Edit pencil */}
             {canEdit && !editing && (
               <button
                 onClick={startEditing}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--gold)] transition-colors hover:bg-[var(--cream-panel)]"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--gold)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
                 title={t("edit", lang)}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -815,7 +821,7 @@ export default function FamilyCardClient({
           👤 {t("section_personal", lang)}
         </SectionTitle>
         <FadeIn delay={0.05}>
-        <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+        <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
           {editing ? (
             <>
               <EditRow
@@ -855,54 +861,21 @@ export default function FamilyCardClient({
               📞 {t("section_contact", lang)}
             </SectionTitle>
             <FadeIn delay={0.1}>
-            <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
               {editing ? (
                 <>
-                  <EditRow
-                    label={t("label_mobile", lang)}
-                    value={memberEdits.mobile_1}
-                    onChange={(v) => setMemberPlain("mobile_1", v)}
-                    type="tel"
-                  />
-                  <EditRow
-                    label={t("label_mobile_2", lang)}
-                    value={memberEdits.mobile_2}
-                    onChange={(v) => setMemberPlain("mobile_2", v)}
-                    type="tel"
-                  />
-                  <EditRow
-                    label={t("label_email", lang)}
-                    value={memberEdits.email}
-                    onChange={(v) => setMemberPlain("email", v)}
-                    type="email"
-                  />
-                  <EditRow
-                    label={t("label_addr_line1", lang)}
-                    value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line1", lang)}
-                    onChange={(v) => setMemberField("addr_line1", v)}
-                  />
-                  <EditRow
-                    label={t("label_addr_line2", lang)}
-                    value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line2", lang)}
-                    onChange={(v) => setMemberField("addr_line2", v)}
-                  />
-                  <EditRow
-                    label={t("label_city", lang)}
-                    value={getEditVal(memberEdits as unknown as Record<string, string>, "city", lang)}
-                    onChange={(v) => setMemberField("city", v)}
-                  />
-                  <EditRow
-                    label={t("label_pincode", lang)}
-                    value={memberEdits.pincode}
-                    onChange={(v) => setMemberPlain("pincode", v)}
-                  />
+                  <EditRow label={t("label_mobile", lang)} value={memberEdits.mobile_1} onChange={(v) => setMemberPlain("mobile_1", v)} type="tel" />
+                  <EditRow label={t("label_mobile_2", lang)} value={memberEdits.mobile_2} onChange={(v) => setMemberPlain("mobile_2", v)} type="tel" />
+                  <EditRow label={t("label_email", lang)} value={memberEdits.email} onChange={(v) => setMemberPlain("email", v)} type="email" />
+                  <EditRow label={t("label_addr_line1", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line1", lang)} onChange={(v) => setMemberField("addr_line1", v)} />
+                  <EditRow label={t("label_addr_line2", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line2", lang)} onChange={(v) => setMemberField("addr_line2", v)} />
+                  <EditRow label={t("label_city", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "city", lang)} onChange={(v) => setMemberField("city", v)} />
+                  <EditRow label={t("label_pincode", lang)} value={memberEdits.pincode} onChange={(v) => setMemberPlain("pincode", v)} />
                 </>
               ) : (
                 <>
                   <InfoRow label={t("label_mobile", lang)} value={m.mobile_1} />
-                  {m.mobile_2 && (
-                    <InfoRow label={t("label_mobile_2", lang)} value={m.mobile_2} />
-                  )}
+                  {m.mobile_2 && <InfoRow label={t("label_mobile_2", lang)} value={m.mobile_2} />}
                   <InfoRow label={t("label_email", lang)} value={m.email} />
                   {address && <InfoRow label={t("label_address", lang)} value={address} />}
                 </>
@@ -919,7 +892,7 @@ export default function FamilyCardClient({
               💑 {t("section_husband", lang)}
             </SectionTitle>
             <FadeIn delay={0.15}>
-            <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
               {editing ? (
                 <>
                   <EditRow
@@ -930,7 +903,7 @@ export default function FamilyCardClient({
                   {isMarriedDaughter && canEdit && (
                     <button
                       onClick={handleAddHusband}
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--gold-deep)] transition-colors hover:bg-[var(--cream-panel)]"
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
                     >
                       + {t("add_husband_details", lang)}
                     </button>
@@ -944,7 +917,7 @@ export default function FamilyCardClient({
           </>
         )}
 
-        {/* ── SPOUSE (real spouse rows — shown for everyone, including daughters with a husband record) ── */}
+        {/* ── SPOUSE (real spouse rows) ── */}
         {spouses.length > 0 && (
           <>
             <SectionTitle>
@@ -956,7 +929,7 @@ export default function FamilyCardClient({
 
               return (
                 <FadeIn key={s.spouse_id} delay={0.15}>
-                <div className="mb-2 rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+                <div className="mb-2 rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
                   <div className="flex items-center gap-3 mb-2">
                     <PhotoAvatar
                       photoUrl={s.photo_url}
@@ -999,43 +972,13 @@ export default function FamilyCardClient({
 
                   {editing ? (
                     <>
-                      <EditRow
-                        label={t("label_father_name", lang)}
-                        value={getEditVal(edits as unknown as Record<string, string>, "father_name", lang)}
-                        onChange={(v) => setSpouseField(idx, "father_name", v)}
-                      />
-                      <EditRow
-                        label={t("label_birth_gotra", lang)}
-                        value={getEditVal(edits as unknown as Record<string, string>, "birth_gotra", lang)}
-                        onChange={(v) => setSpouseField(idx, "birth_gotra", v)}
-                      />
-                      <EditRow
-                        label={t("label_education", lang)}
-                        value={getEditVal(edits as unknown as Record<string, string>, "education", lang)}
-                        onChange={(v) => setSpouseField(idx, "education", v)}
-                      />
-                      <EditRow
-                        label={t("label_dob", lang)}
-                        value={edits.dob}
-                        onChange={(v) => setSpousePlain(idx, "dob", v)}
-                      />
-                      <EditRow
-                        label={t("label_dom", lang)}
-                        value={edits.date_of_marriage}
-                        onChange={(v) => setSpousePlain(idx, "date_of_marriage", v)}
-                      />
-                      <EditRow
-                        label={t("label_mobile", lang)}
-                        value={edits.mobile}
-                        onChange={(v) => setSpousePlain(idx, "mobile", v)}
-                        type="tel"
-                      />
-                      <EditRow
-                        label={t("label_email", lang)}
-                        value={edits.email}
-                        onChange={(v) => setSpousePlain(idx, "email", v)}
-                        type="email"
-                      />
+                      <EditRow label={t("label_father_name", lang)} value={getEditVal(edits as unknown as Record<string, string>, "father_name", lang)} onChange={(v) => setSpouseField(idx, "father_name", v)} />
+                      <EditRow label={t("label_birth_gotra", lang)} value={getEditVal(edits as unknown as Record<string, string>, "birth_gotra", lang)} onChange={(v) => setSpouseField(idx, "birth_gotra", v)} />
+                      <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setSpouseField(idx, "education", v)} />
+                      <EditRow label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setSpousePlain(idx, "dob", v)} />
+                      <EditRow label={t("label_dom", lang)} value={edits.date_of_marriage} onChange={(v) => setSpousePlain(idx, "date_of_marriage", v)} />
+                      <EditRow label={t("label_mobile", lang)} value={edits.mobile} onChange={(v) => setSpousePlain(idx, "mobile", v)} type="tel" />
+                      <EditRow label={t("label_email", lang)} value={edits.email} onChange={(v) => setSpousePlain(idx, "email", v)} type="email" />
                     </>
                   ) : (
                     <>
@@ -1063,14 +1006,14 @@ export default function FamilyCardClient({
               👶 {t("section_children", lang)}
             </SectionTitle>
             <FadeIn delay={0.2}>
-            <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
               {childrenData.map((c, idx) => {
                 const cName = bi(c.full_name, c.full_name_en, lang);
                 const cEducation = bi(c.education, c.education_en, lang);
                 const edits = childEdits[idx];
 
                 return (
-                  <div key={c.child_id} className="border-b border-[var(--border-warm)] py-3 last:border-0">
+                  <div key={c.child_id} className="border-b border-[var(--hairline)] py-3 last:border-0">
                     <div className="flex items-center gap-3">
                       <PhotoAvatar
                         photoUrl={c.photo_url}
@@ -1101,35 +1044,21 @@ export default function FamilyCardClient({
 
                       {editing ? (
                         <div className="flex-1">
-                          <EditRow
-                            label={t("label_full_name", lang)}
-                            value={getEditVal(edits as unknown as Record<string, string>, "full_name", lang)}
-                            onChange={(v) => setChildField(idx, "full_name", v)}
-                          />
-                          <EditRow
-                            label={t("label_gender", lang)}
-                            value={edits.gender}
-                            onChange={(v) => setChildPlain(idx, "gender", v)}
-                          />
-                          <EditRow
-                            label={t("label_dob", lang)}
-                            value={edits.dob}
-                            onChange={(v) => setChildPlain(idx, "dob", v)}
-                          />
-                          <EditRow
-                            label={t("label_education", lang)}
-                            value={getEditVal(edits as unknown as Record<string, string>, "education", lang)}
-                            onChange={(v) => setChildField(idx, "education", v)}
-                          />
+                          <EditRow label={t("label_full_name", lang)} value={getEditVal(edits as unknown as Record<string, string>, "full_name", lang)} onChange={(v) => setChildField(idx, "full_name", v)} />
+                          <EditRow label={t("label_gender", lang)} value={edits.gender} onChange={(v) => setChildPlain(idx, "gender", v)} />
+                          <EditRow label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setChildPlain(idx, "dob", v)} />
+                          <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setChildField(idx, "education", v)} />
                         </div>
                       ) : (
                         <div>
                           <p className="font-display font-semibold text-[var(--maroon-deep)]">{cName}</p>
-                          <div className="mt-1 flex flex-wrap gap-x-4 text-sm text-[var(--gold-deep)]">
+                          <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--muted)]">
                             {c.gender && (
                               <span>{c.gender === "M" ? t("son", lang) : t("daughter", lang)}</span>
                             )}
+                            {c.gender && c.dob && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
                             {c.dob && <span>{t("born", lang)}: {c.dob}</span>}
+                            {(c.gender || c.dob) && cEducation && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
                             {cEducation && <span>{cEducation}</span>}
                           </div>
                         </div>
@@ -1141,7 +1070,7 @@ export default function FamilyCardClient({
               {isMarriedDaughter && canEdit && editing && (
                 <button
                   onClick={handleAddChild}
-                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--gold-deep)] transition-colors hover:bg-[var(--cream-panel)]"
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
                 >
                   + {t("add_child", lang)}
                 </button>
@@ -1153,18 +1082,18 @@ export default function FamilyCardClient({
 
         {/* ── SAVE / CANCEL BAR ────────────────────────────────────────── */}
         {editing && (
-          <div className="sticky bottom-0 mt-6 flex gap-3 rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-lg">
+          <div className="sticky bottom-0 mt-6 flex gap-3 rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-lift">
             <button
               onClick={cancelEditing}
               disabled={saving}
-              className="flex-1 rounded-lg border border-[var(--border-warm)] py-2.5 text-sm font-medium text-[var(--gold-deep)] transition-colors hover:bg-[var(--cream-panel)] disabled:opacity-50"
+              className="min-h-[48px] flex-1 rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
             >
               {t("cancel", lang)}
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 rounded-lg bg-[var(--maroon)] py-2.5 text-sm font-medium text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)] disabled:opacity-50"
+              className="min-h-[48px] flex-1 rounded-[var(--r)] bg-[var(--maroon)] text-sm font-medium text-[var(--ivory)] motion-safe:transition-[background-color,transform] motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--maroon-deep)] active:scale-[.98] disabled:opacity-50"
             >
               {saving ? t("saving", lang) : t("save", lang)}
             </button>
@@ -1178,16 +1107,16 @@ export default function FamilyCardClient({
               🌳 {t("section_lineage", lang)}
             </SectionTitle>
             <FadeIn delay={0.25}>
-            <div className="rounded-[12px] border border-[var(--border-card)] bg-white p-4 shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
+            <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
               {father && (
-                <div className="border-b border-[var(--border-warm)] pb-3">
-                  <p className="text-sm text-[var(--gold-deep)]">{t("label_father", lang)}</p>
+                <div className="border-b border-[var(--hairline)] pb-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_father", lang)}</p>
                   <Link
                     href={`/family/${father.member_id}`}
-                    className="mt-1 inline-flex items-center gap-1 text-[var(--maroon)] font-display font-semibold hover:text-[var(--gold-deep)]"
+                    className="mt-1 inline-flex items-center gap-1 font-display font-semibold text-[var(--maroon)] hover:text-[var(--gold-deep)]"
                   >
                     {bi(father.full_name, father.full_name_en, lang)}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--gold)] opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </Link>
@@ -1196,18 +1125,18 @@ export default function FamilyCardClient({
 
               {memberChildren.length > 0 && (
                 <div className={father ? "pt-3" : ""}>
-                  <p className="text-sm text-[var(--gold-deep)]">{t("label_children_in_dir", lang)}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_children_in_dir", lang)}</p>
                   <div className="mt-2 space-y-2">
                     {memberChildren.map((mc) => (
                       <Link
                         key={mc.member_id}
                         href={`/family/${mc.member_id}`}
-                        className="flex items-center justify-between rounded-lg bg-[var(--cream)] p-3 transition-colors hover:bg-[var(--cream-panel)]"
+                        className="flex items-center justify-between rounded-[var(--r)] bg-[var(--cream-panel)] p-3 motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream)]"
                       >
-                        <span className="text-[var(--maroon)] font-display font-semibold">
+                        <span className="font-display font-semibold text-[var(--maroon)]">
                           {bi(mc.full_name, mc.full_name_en, lang)}
                         </span>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--gold)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--gold)] opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
                       </Link>
