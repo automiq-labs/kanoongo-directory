@@ -3,6 +3,26 @@ import { Member, Spouse, Child } from "@/lib/types";
 import { notFound } from "next/navigation";
 import FamilyCardClient from "./family-card-client";
 
+interface FamilyCardRpc {
+  found: boolean;
+  member: Member;
+  can_edit: boolean;
+  is_own_card: boolean;
+  spouses: Spouse[];
+  children: Child[];
+  member_children: {
+    member_id: string;
+    full_name: string;
+    full_name_en: string | null;
+    gender: string | null;
+    dob: string | null;
+    marital_status: string | null;
+    photo_url: string | null;
+    is_deceased: boolean;
+  }[];
+  father: { member_id: string; full_name: string; full_name_en: string | null } | null;
+}
+
 export default async function FamilyCardPage({
   params,
 }: {
@@ -11,21 +31,20 @@ export default async function FamilyCardPage({
   const { member_id } = await params;
   const supabase = await createClient();
 
-  // Fetch member + current user + branch edit permission in parallel
-  const [memberResult, userResult, canEditResult] = await Promise.all([
-    supabase.from("members").select("*").eq("member_id", member_id).single(),
-    supabase.auth.getUser(),
-    supabase.rpc("can_edit_member", { p_member_id: member_id }),
+  // Single RPC replaces the 6–7 sequential round-trips
+  const [cardResult, userResult] = await Promise.all([
+    supabase.rpc("get_family_card", { p_member_id: member_id }),
+    supabase.auth.getUser(), // still needed for userId + userFamilyId (photo uploads / edit_history)
   ]);
 
-  if (!memberResult.data) notFound();
-  const m = memberResult.data as Member;
-  const userId = userResult.data.user?.id ?? null;
-  const canEdit = canEditResult.data === true;
+  const data = cardResult.data as FamilyCardRpc | null;
+  if (!data || !data.found) notFound();
 
-  // Look up user's family_id (needed for photo upload paths)
+  const userId = userResult.data.user?.id ?? null;
+
+  // userFamilyId — needed for photo upload paths; only fetch when user can edit
   let userFamilyId: string | null = null;
-  if (userId && canEdit) {
+  if (userId && data.can_edit) {
     const { data: family } = await supabase
       .from("families")
       .select("id")
@@ -34,57 +53,17 @@ export default async function FamilyCardPage({
     if (family) userFamilyId = family.id;
   }
 
-  // Determine if this is the user's own card
-  let isOwnCard = false;
-  if (userId) {
-    const { data: ownFam } = await supabase
-      .from("families")
-      .select("head_member_id")
-      .eq("auth_user_id", userId)
-      .maybeSingle();
-    isOwnCard = ownFam?.head_member_id === member_id;
-  }
-
-  const [spouseResult, childrenResult, fatherResult, memberChildrenResult] =
-    await Promise.all([
-      supabase.from("spouses").select("*").eq("member_id", member_id),
-      supabase.from("children").select("*").eq("parent_member_id", member_id),
-      m.father_member_id
-        ? supabase
-            .from("members")
-            .select("member_id, full_name, full_name_en, is_deceased")
-            .eq("member_id", m.father_member_id)
-            .single()
-        : Promise.resolve({ data: null }),
-      supabase
-        .from("members")
-        .select("member_id, full_name, full_name_en, is_deceased")
-        .eq("father_member_id", member_id),
-    ]);
-
-  const spouses = (spouseResult.data as Spouse[]) || [];
-  const children = (childrenResult.data as Child[]) || [];
-  const father = fatherResult.data as Pick<
-    Member,
-    "member_id" | "full_name" | "full_name_en" | "is_deceased"
-  > | null;
-  const memberChildren =
-    (memberChildrenResult.data as Pick<
-      Member,
-      "member_id" | "full_name" | "full_name_en" | "is_deceased"
-    >[]) || [];
-
   return (
     <FamilyCardClient
-      member={m}
-      spouses={spouses}
-      childrenData={children}
-      father={father}
-      memberChildren={memberChildren}
-      canEdit={canEdit}
+      member={data.member}
+      spouses={data.spouses || []}
+      childrenData={data.children || []}
+      father={data.father ? { ...data.father, is_deceased: false } : null}
+      memberChildren={data.member_children || []}
+      canEdit={data.can_edit}
       userFamilyId={userFamilyId}
       userId={userId}
-      isOwnCard={isOwnCard}
+      isOwnCard={data.is_own_card}
     />
   );
 }

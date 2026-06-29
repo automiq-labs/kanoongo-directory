@@ -141,6 +141,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [gender, setGender] = useState<string>("");
   const [creating, setCreating] = useState(false);
   const [emailConfirmNeeded, setEmailConfirmNeeded] = useState(false);
 
@@ -388,6 +389,25 @@ export default function RegisterPage() {
         setError(t("reg_signup_error", lang));
         setCreating(false);
         return;
+      }
+
+      // Set gender on the newly created member (new-member path only, not claims)
+      if (gender && !claimMemberId && !claimSpouseId) {
+        try {
+          const { data: fam } = await supabase
+            .from("families")
+            .select("head_member_id")
+            .eq("auth_user_id", session.user.id)
+            .single();
+          if (fam?.head_member_id) {
+            await supabase
+              .from("members")
+              .update({ gender })
+              .eq("member_id", fam.head_member_id);
+          }
+        } catch {
+          // Gender update is best-effort; don't block registration
+        }
       }
 
       router.push("/");
@@ -786,6 +806,37 @@ export default function RegisterPage() {
                 <h2 className="mb-5 text-lg font-semibold text-[var(--maroon-deep)]">
                   {t("reg_step_account_title", lang)}
                 </h2>
+                {/* Gender — only on new-member path (not claiming) */}
+                {!claimMemberId && !claimSpouseId && (
+                  <div className="mb-5">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_gender", lang)}</label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setGender("M")}
+                        className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+                          gender === "M"
+                            ? "bg-[var(--maroon)] text-[var(--ivory)]"
+                            : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)] hover:bg-[var(--cream-panel)]"
+                        }`}
+                      >
+                        {t("male", lang)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGender("F")}
+                        className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+                          gender === "F"
+                            ? "bg-[var(--maroon)] text-[var(--ivory)]"
+                            : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)] hover:bg-[var(--cream-panel)]"
+                        }`}
+                      >
+                        {t("female", lang)}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-4">
                   <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("email", lang)}</label>
                   <input type="email" required value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }} className={inputClass} placeholder="email@example.com" autoFocus />

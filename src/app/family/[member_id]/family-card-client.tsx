@@ -20,6 +20,11 @@ type LineageMember = Pick<
   "member_id" | "full_name" | "full_name_en" | "is_deceased"
 >;
 
+type MemberChild = Pick<
+  Member,
+  "member_id" | "full_name" | "full_name_en" | "gender" | "dob" | "marital_status" | "photo_url" | "is_deceased"
+>;
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="mt-6 mb-3">
@@ -337,7 +342,7 @@ export default function FamilyCardClient({
   spouses: Spouse[];
   childrenData: Child[];
   father: LineageMember | null;
-  memberChildren: LineageMember[];
+  memberChildren: MemberChild[];
   canEdit: boolean;
   userFamilyId: string | null;
   userId: string | null;
@@ -376,6 +381,27 @@ export default function FamilyCardClient({
 
   // Photo validation helper
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // Promotion state (mark child as married)
+  const [promotingChildId, setPromotingChildId] = useState<string | null>(null);
+  const [promoteHusbandName, setPromoteHusbandName] = useState("");
+  const [promoteLoading, setPromoteLoading] = useState(false);
+
+  // Add-wife form state (for married male members)
+  const [showAddWife, setShowAddWife] = useState(false);
+  const [addWifeLoading, setAddWifeLoading] = useState(false);
+  const [wifeForm, setWifeForm] = useState({ fullName: "", fatherName: "", birthGotra: "", education: "", dob: "" });
+
+  // Add-children form state (multi-row, view mode, for any married member)
+  const emptyChildRow = { fullName: "", gender: "", dob: "", education: "" };
+  const [showAddChild, setShowAddChild] = useState(false);
+  const [addChildLoading, setAddChildLoading] = useState(false);
+  const [childRows, setChildRows] = useState<Array<{ fullName: string; gender: string; dob: string; education: string }>>([{ ...emptyChildRow }]);
+
+  // Mark member as married (for unmarried members)
+  const [showMarkMarried, setShowMarkMarried] = useState(false);
+  const [markMarriedGender, setMarkMarriedGender] = useState<string>(m.gender || "");
+  const [markMarriedLoading, setMarkMarriedLoading] = useState(false);
 
   function handlePhotoSelect(
     file: File,
@@ -445,24 +471,145 @@ export default function FamilyCardClient({
     router.refresh();
   }
 
-  // ── Add child (for married daughters) ──────────────────────────────────
+  // ── Add children bulk (view mode, for any married member) ───────────────
 
-  async function handleAddChild() {
-    const supabase = createClient();
-
-    const { error } = await supabase.rpc("add_child", {
-      p_parent_member_id: m.member_id,
-      p_full_name: "",
-      p_full_name_en: null,
-      p_gender: null,
-    });
-
-    if (error) {
-      console.error("add_child RPC failed:", error);
+  async function handleAddChildrenBulk() {
+    const filledRows = childRows.filter((r) => r.fullName.trim());
+    if (filledRows.length === 0) {
       setToast({ type: "error", msg: t("save_error", lang) });
       return;
     }
-    router.refresh();
+
+    setAddChildLoading(true);
+    try {
+      const supabase = createClient();
+      const payload = filledRows.map((r) => ({
+        full_name: r.fullName.trim(),
+        full_name_en: r.fullName.trim(),
+        gender: r.gender.trim() || null,
+        dob: r.dob || null,
+        education: r.education.trim() || null,
+        education_en: r.education.trim() || null,
+      }));
+
+      const { error } = await supabase.rpc("add_children_bulk", {
+        p_parent_member_id: m.member_id,
+        p_children: payload,
+      });
+
+      if (error) {
+        console.error("add_children_bulk RPC failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        setAddChildLoading(false);
+        return;
+      }
+
+      setShowAddChild(false);
+      setChildRows([{ ...emptyChildRow }]);
+      router.refresh();
+    } catch (err) {
+      console.error("Add children error:", err);
+      setToast({ type: "error", msg: t("save_error", lang) });
+    } finally {
+      setAddChildLoading(false);
+    }
+  }
+
+  // ── Mark member as married ──────────────────────────────────────────────
+
+  async function handleMarkMemberMarried() {
+    setMarkMarriedLoading(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("mark_member_married", {
+        p_member_id: m.member_id,
+        p_gender: m.gender ? null : (markMarriedGender || null),
+      });
+
+      if (error) {
+        console.error("mark_member_married failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        setMarkMarriedLoading(false);
+        return;
+      }
+
+      setShowMarkMarried(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Mark married error:", err);
+      setToast({ type: "error", msg: t("save_error", lang) });
+    } finally {
+      setMarkMarriedLoading(false);
+    }
+  }
+
+  // ── Add wife (for married male members without a spouse row) ────────────
+
+  async function handleAddWife() {
+    setAddWifeLoading(true);
+    try {
+      const supabase = createClient();
+      const nameVal = wifeForm.fullName.trim();
+      const { error } = await supabase.rpc("add_spouse", {
+        p_member_id: m.member_id,
+        p_full_name: nameVal || "",
+        p_full_name_en: nameVal || null,
+        p_gender: "F",
+        p_father_name: wifeForm.fatherName.trim() || null,
+        p_father_name_en: wifeForm.fatherName.trim() || null,
+        p_birth_gotra: wifeForm.birthGotra.trim() || null,
+        p_birth_gotra_en: wifeForm.birthGotra.trim() || null,
+        p_education: wifeForm.education.trim() || null,
+        p_education_en: wifeForm.education.trim() || null,
+        p_dob: wifeForm.dob || null,
+      });
+
+      if (error) {
+        console.error("add_spouse (wife) RPC failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        setAddWifeLoading(false);
+        return;
+      }
+
+      setShowAddWife(false);
+      setWifeForm({ fullName: "", fatherName: "", birthGotra: "", education: "", dob: "" });
+      router.refresh();
+    } catch (err) {
+      console.error("Add wife error:", err);
+      setToast({ type: "error", msg: t("save_error", lang) });
+    } finally {
+      setAddWifeLoading(false);
+    }
+  }
+
+  // ── Promote child to member (mark as married) ──────────────────────────
+
+  async function handlePromoteChild(childId: string, isDaughter: boolean) {
+    setPromoteLoading(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("promote_child_to_member", {
+        p_child_id: childId,
+        p_husband_name: isDaughter ? (promoteHusbandName.trim() || null) : null,
+        p_husband_name_en: isDaughter ? (promoteHusbandName.trim() || null) : null,
+      });
+
+      if (error) {
+        console.error("promote_child_to_member failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        setPromoteLoading(false);
+        return;
+      }
+
+      setPromotingChildId(null);
+      setPromoteHusbandName("");
+      router.refresh();
+    } catch (err) {
+      console.error("Promotion error:", err);
+      setToast({ type: "error", msg: t("save_error", lang) });
+    } finally {
+      setPromoteLoading(false);
+    }
   }
 
   // Helper to update a field in memberEdits bilingually
@@ -681,8 +828,33 @@ export default function FamilyCardClient({
   const husbandName = bi(m.husband_name, m.husband_name_en, lang);
   const isFemale = m.gender === "F";
   const isMarriedDaughter = m.member_id.startsWith("D");
+  const isMarriedMember = m.marital_status === "married";
+  const memberIsFemale = m.gender === "F" || m.gender === "female";
   // For married daughters: if a real spouse row exists, show that instead of text husband_name
   const hasRealHusbandSpouse = isMarriedDaughter && spouses.length > 0;
+
+  // ── Merged children list (member-children + child-row children, sorted by dob) ──
+
+  type MergedChild =
+    | { source: "member"; data: MemberChild }
+    | { source: "child"; data: Child; idx: number };
+
+  const mergedChildren: MergedChild[] = [
+    ...memberChildren.map((mc): MergedChild => ({ source: "member", data: mc })),
+    ...childrenData.map((c, idx): MergedChild => ({ source: "child", data: c, idx })),
+  ].sort((a, b) => {
+    const dobA = a.data.dob || "";
+    const dobB = b.data.dob || "";
+    // Both have dob: sort ascending
+    if (dobA && dobB) return dobA.localeCompare(dobB);
+    // One has dob, the other doesn't: dob first
+    if (dobA && !dobB) return -1;
+    if (!dobA && dobB) return 1;
+    // Neither has dob: sort by name
+    const nameA = (a.data.full_name_en || a.data.full_name || "").toLowerCase();
+    const nameB = (b.data.full_name_en || b.data.full_name || "").toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -813,6 +985,7 @@ export default function FamilyCardClient({
               />
             </div>
           )}
+
         </div>
         </FadeIn>
 
@@ -849,6 +1022,66 @@ export default function FamilyCardClient({
                 <InfoRow label={t("label_dod", lang)} value={m.date_of_death} />
               )}
               <InfoRow label={t("label_marital_status", lang)} value={m.marital_status} />
+
+              {/* Mark member as married — under the marital status row */}
+              {canEdit && m.marital_status !== "married" && !showMarkMarried && (
+                <button
+                  onClick={() => setShowMarkMarried(true)}
+                  className="mt-2 flex min-h-[44px] items-center rounded-[var(--r)] border border-[var(--hairline)] px-3 py-1.5 text-[13px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                >
+                  {t("mark_as_married", lang)}
+                </button>
+              )}
+
+              {showMarkMarried && (
+                <div className="mt-2 rounded-[var(--r-sm)] p-4" style={{ background: "rgba(110,30,42,0.06)" }}>
+                  <p className="text-sm text-[var(--maroon-deep)]">
+                    {t("mark_married_confirm", lang).replace("{name}", name || "")}
+                  </p>
+                  {!m.gender && (
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMarkMarriedGender("M")}
+                        className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+                          markMarriedGender === "M"
+                            ? "bg-[var(--maroon)] text-[var(--ivory)]"
+                            : "border border-[var(--hairline)] bg-[var(--raised)] text-[var(--muted)] hover:bg-[var(--cream-panel)]"
+                        }`}
+                      >
+                        {t("male", lang)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMarkMarriedGender("F")}
+                        className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+                          markMarriedGender === "F"
+                            ? "bg-[var(--maroon)] text-[var(--ivory)]"
+                            : "border border-[var(--hairline)] bg-[var(--raised)] text-[var(--muted)] hover:bg-[var(--cream-panel)]"
+                        }`}
+                      >
+                        {t("female", lang)}
+                      </button>
+                    </div>
+                  )}
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => setShowMarkMarried(false)}
+                      disabled={markMarriedLoading}
+                      className="min-h-[44px] flex-1 rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
+                    >
+                      {t("cancel", lang)}
+                    </button>
+                    <button
+                      onClick={handleMarkMemberMarried}
+                      disabled={markMarriedLoading || (!m.gender && !markMarriedGender)}
+                      className="min-h-[44px] flex-1 rounded-[var(--r)] bg-[var(--maroon)] text-sm font-medium text-[var(--ivory)] motion-safe:transition-[background-color,transform] motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--maroon-deep)] active:scale-[.98] disabled:opacity-50"
+                    >
+                      {markMarriedLoading ? t("saving", lang) : t("confirm", lang)}
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -999,18 +1232,95 @@ export default function FamilyCardClient({
           </>
         )}
 
-        {/* ── CHILDREN ─────────────────────────────────────────────────── */}
-        {(childrenData.length > 0 || (isMarriedDaughter && canEdit && editing)) && (
+        {/* ── ADD WIFE (for married male members with no spouse row) ──── */}
+        {canEdit && isMarriedMember && !memberIsFemale && spouses.length === 0 && (
+          <>
+            <SectionTitle>
+              💑 {t("section_spouse", lang)}
+            </SectionTitle>
+            <FadeIn delay={0.15}>
+            <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
+              {!showAddWife ? (
+                <button
+                  onClick={() => setShowAddWife(true)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                >
+                  + {t("add_wife", lang)}
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <EditRow label={t("label_full_name", lang)} value={wifeForm.fullName} onChange={(v) => setWifeForm((p) => ({ ...p, fullName: v }))} />
+                  <EditRow label={t("label_father_name", lang)} value={wifeForm.fatherName} onChange={(v) => setWifeForm((p) => ({ ...p, fatherName: v }))} />
+                  <EditRow label={t("label_birth_gotra", lang)} value={wifeForm.birthGotra} onChange={(v) => setWifeForm((p) => ({ ...p, birthGotra: v }))} />
+                  <EditRow label={t("label_education", lang)} value={wifeForm.education} onChange={(v) => setWifeForm((p) => ({ ...p, education: v }))} />
+                  <EditRow label={t("label_dob", lang)} value={wifeForm.dob} onChange={(v) => setWifeForm((p) => ({ ...p, dob: v }))} />
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={() => { setShowAddWife(false); setWifeForm({ fullName: "", fatherName: "", birthGotra: "", education: "", dob: "" }); }}
+                      disabled={addWifeLoading}
+                      className="min-h-[44px] flex-1 rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
+                    >
+                      {t("cancel", lang)}
+                    </button>
+                    <button
+                      onClick={handleAddWife}
+                      disabled={addWifeLoading || !wifeForm.fullName.trim()}
+                      className="min-h-[44px] flex-1 rounded-[var(--r)] bg-[var(--maroon)] text-sm font-medium text-[var(--ivory)] motion-safe:transition-[background-color,transform] motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--maroon-deep)] active:scale-[.98] disabled:opacity-50"
+                    >
+                      {addWifeLoading ? t("saving", lang) : t("save", lang)}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            </FadeIn>
+          </>
+        )}
+
+        {/* ── CHILDREN (merged: member-children + child-row children) ───── */}
+        {(mergedChildren.length > 0 || (isMarriedMember && canEdit)) && (
           <>
             <SectionTitle>
               👶 {t("section_children", lang)}
             </SectionTitle>
             <FadeIn delay={0.2}>
             <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
-              {childrenData.map((c, idx) => {
+              {mergedChildren.map((entry) => {
+                if (entry.source === "member") {
+                  // ── MEMBER-CHILD (registered, tappable) ──
+                  const mc = entry.data;
+                  const mcName = bi(mc.full_name, mc.full_name_en, lang);
+                  const mcGender = mc.gender;
+                  return (
+                    <Link
+                      key={mc.member_id}
+                      href={`/family/${mc.member_id}`}
+                      className="flex items-center gap-3 border-b border-[var(--hairline)] py-3 last:border-0 motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                    >
+                      <PhotoAvatar photoUrl={mc.photo_url} previewUrl={null} fallbackInitial={mcName?.charAt(0) || "?"} editing={false} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-display font-semibold ${mc.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>{mcName}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--muted)]">
+                          {mcGender && <span>{mcGender === "M" ? t("son", lang) : t("daughter", lang)}</span>}
+                          {mcGender && mc.dob && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
+                          {mc.dob && <span>{t("born", lang)}: {mc.dob}</span>}
+                        </div>
+                      </div>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-[var(--gold)] opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </Link>
+                  );
+                }
+
+                // ── CHILD-ROW (unregistered, inline) ──
+                const c = entry.data;
+                const idx = entry.idx;
                 const cName = bi(c.full_name, c.full_name_en, lang);
                 const cEducation = bi(c.education, c.education_en, lang);
                 const edits = childEdits[idx];
+                const isDaughter = c.gender?.toUpperCase() === "F";
+                const isConfirming = promotingChildId === c.child_id;
 
                 return (
                   <div key={c.child_id} className="border-b border-[var(--hairline)] py-3 last:border-0">
@@ -1050,7 +1360,7 @@ export default function FamilyCardClient({
                           <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setChildField(idx, "education", v)} />
                         </div>
                       ) : (
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p className="font-display font-semibold text-[var(--maroon-deep)]">{cName}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--muted)]">
                             {c.gender && (
@@ -1061,19 +1371,120 @@ export default function FamilyCardClient({
                             {(c.gender || c.dob) && cEducation && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
                             {cEducation && <span>{cEducation}</span>}
                           </div>
+                          {/* Mark as married — only in view mode, when user has edit permission */}
+                          {canEdit && !isConfirming && (
+                            <button
+                              onClick={() => { setPromotingChildId(c.child_id); setPromoteHusbandName(""); }}
+                              className="mt-2 flex min-h-[44px] items-center rounded-[var(--r)] border border-[var(--hairline)] px-3 py-1.5 text-[13px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                            >
+                              {t("mark_as_married", lang)}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
+
+                    {/* Inline promotion confirm */}
+                    {isConfirming && !editing && (
+                      <div className="mt-3 rounded-[var(--r-sm)] p-4" style={{ background: "rgba(110,30,42,0.06)" }}>
+                        <p className="text-sm text-[var(--maroon-deep)]">
+                          {t("promote_confirm", lang).replace("{name}", cName || "")}
+                        </p>
+                        {isDaughter && (
+                          <div className="mt-3">
+                            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                              {t("husband_name_label", lang)}
+                            </label>
+                            <input
+                              type="text"
+                              value={promoteHusbandName}
+                              onChange={(e) => setPromoteHusbandName(e.target.value)}
+                              className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-sm text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+                            />
+                          </div>
+                        )}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            onClick={() => { setPromotingChildId(null); setPromoteHusbandName(""); }}
+                            disabled={promoteLoading}
+                            className="min-h-[44px] flex-1 rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
+                          >
+                            {t("cancel", lang)}
+                          </button>
+                          <button
+                            onClick={() => handlePromoteChild(c.child_id, isDaughter)}
+                            disabled={promoteLoading}
+                            className="min-h-[44px] flex-1 rounded-[var(--r)] bg-[var(--maroon)] text-sm font-medium text-[var(--ivory)] motion-safe:transition-[background-color,transform] motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--maroon-deep)] active:scale-[.98] disabled:opacity-50"
+                          >
+                            {promoteLoading ? t("promoting", lang) : t("confirm", lang)}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
-              {isMarriedDaughter && canEdit && editing && (
-                <button
-                  onClick={handleAddChild}
-                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
-                >
-                  + {t("add_child", lang)}
-                </button>
+              {isMarriedMember && canEdit && !editing && (
+                <div className="mt-3">
+                  {!showAddChild ? (
+                    <button
+                      onClick={() => { setShowAddChild(true); setChildRows([{ ...emptyChildRow }]); }}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                    >
+                      + {t("add_child", lang)}
+                    </button>
+                  ) : (
+                    <div className="rounded-[var(--r-sm)] border border-[var(--hairline)] p-4">
+                      {childRows.map((row, ri) => (
+                        <div key={ri}>
+                          {ri > 0 && <div className="my-3 h-px bg-[var(--hairline)]" />}
+                          <div className="relative space-y-3">
+                            {childRows.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setChildRows((prev) => prev.filter((_, j) => j !== ri))}
+                                className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full text-xs text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:text-[var(--maroon)]"
+                              >
+                                ✕
+                              </button>
+                            )}
+                            <EditRow label={t("label_full_name", lang)} value={row.fullName} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, fullName: v } : r))} />
+                            <EditRow label={t("label_gender", lang)} value={row.gender} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, gender: v } : r))} />
+                            <EditRow label={t("label_dob", lang)} value={row.dob} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, dob: v } : r))} />
+                            <EditRow label={t("label_education", lang)} value={row.education} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, education: v } : r))} />
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Add another row */}
+                      <button
+                        type="button"
+                        onClick={() => setChildRows((prev) => [...prev, { ...emptyChildRow }])}
+                        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-[13px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                      >
+                        + {t("add_another_child", lang)}
+                      </button>
+
+                      {/* Cancel / Save all */}
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={() => { setShowAddChild(false); setChildRows([{ ...emptyChildRow }]); }}
+                          disabled={addChildLoading}
+                          className="min-h-[44px] flex-1 rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
+                        >
+                          {t("cancel", lang)}
+                        </button>
+                        <button
+                          onClick={handleAddChildrenBulk}
+                          disabled={addChildLoading || !childRows.some((r) => r.fullName.trim())}
+                          className="min-h-[44px] flex-1 rounded-[var(--r)] bg-[var(--maroon)] text-sm font-medium text-[var(--ivory)] motion-safe:transition-[background-color,transform] motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--maroon-deep)] active:scale-[.98] disabled:opacity-50"
+                        >
+                          {addChildLoading ? t("saving", lang) : t("save", lang)}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             </FadeIn>
