@@ -22,15 +22,57 @@ export default function ResetPasswordPage() {
   const [sent, setSent] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [linkExpired, setLinkExpired] = useState(false);
 
   useEffect(() => {
+    // Check URL for recovery error indicators (hash or query params)
+    const hash = window.location.hash;
+    const search = window.location.search;
+    const combined = hash + search;
+    const hasRecoveryError =
+      combined.includes("error_code=otp_expired") ||
+      combined.includes("error=access_denied") ||
+      combined.includes("expired") ||
+      combined.includes("invalid");
+    const hasRecoveryIntent = combined.includes("type=recovery") || hasRecoveryError;
+
+    if (hasRecoveryError) {
+      setLinkExpired(true);
+      // Clean error params from URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
     // Listen for the PASSWORD_RECOVERY event that fires when user clicks the reset link
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
+        setLinkExpired(false);
         setMode("set");
       }
     });
-    return () => subscription.unsubscribe();
+
+    // Fallback: if we had recovery intent but no event fires after 3s, show expired
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    if (hasRecoveryIntent && !hasRecoveryError) {
+      fallbackTimer = setTimeout(() => {
+        // Only show if still in request mode (event didn't fire)
+        setLinkExpired((prev) => {
+          // Don't overwrite if mode already changed
+          return prev;
+        });
+        // Check mode via a ref-like approach — if we're here and no PASSWORD_RECOVERY fired, show notice
+        setMode((currentMode) => {
+          if (currentMode === "request") setLinkExpired(true);
+          return currentMode;
+        });
+      }, 3000);
+      // Clean params regardless
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    return () => {
+      subscription.unsubscribe();
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+    };
   }, [supabase]);
 
   async function handleSendReset(e: React.FormEvent) {
@@ -97,6 +139,13 @@ export default function ResetPasswordPage() {
               {t("reset_title", lang)}
             </h1>
           </div>
+
+          {/* Expired link notice */}
+          {linkExpired && mode === "request" && (
+            <div className="mb-4 rounded-[var(--r-sm)] px-4 py-3 text-sm font-medium text-[var(--maroon-deep)]" style={{ background: "rgba(110,30,42,0.06)" }}>
+              {t("reset_link_expired", lang)}
+            </div>
+          )}
 
           {/* MODE: Request reset link */}
           {mode === "request" && !sent && (

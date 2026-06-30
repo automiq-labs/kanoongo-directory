@@ -79,8 +79,12 @@ export default function ProfilePage() {
     setUploading(true);
     try {
       const url = await uploadPhoto(file, profile.familyId, "members", profile.memberId);
-      await supabase.from("members").update({ photo_url: url }).eq("member_id", profile.memberId);
-      setProfile((p) => p ? { ...p, photoUrl: url } : p);
+      const { error: updateErr } = await supabase.from("members").update({ photo_url: url }).eq("member_id", profile.memberId);
+      if (updateErr) {
+        console.warn("Photo URL update failed:", updateErr.message);
+      } else {
+        setProfile((p) => p ? { ...p, photoUrl: url } : p);
+      }
       setPhotoPreview(null);
     } catch (e) {
       console.error("Photo upload failed:", e);
@@ -130,6 +134,7 @@ export default function ProfilePage() {
         <div className="mx-auto flex max-w-lg md:max-w-2xl items-center gap-3">
           <button
             onClick={() => router.back()}
+            aria-label={t("reg_back", lang)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

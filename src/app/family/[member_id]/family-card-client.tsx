@@ -147,7 +147,7 @@ function EditRow({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-sm text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+        className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
       />
     </div>
   );
@@ -387,6 +387,9 @@ export default function FamilyCardClient({
   const [promoteHusbandName, setPromoteHusbandName] = useState("");
   const [promoteLoading, setPromoteLoading] = useState(false);
 
+  // Add-husband loading (for married daughters)
+  const [addHusbandLoading, setAddHusbandLoading] = useState(false);
+
   // Add-wife form state (for married male members)
   const [showAddWife, setShowAddWife] = useState(false);
   const [addWifeLoading, setAddWifeLoading] = useState(false);
@@ -454,26 +457,32 @@ export default function FamilyCardClient({
   // ── Add husband (for married daughters without a spouse row) ────────────
 
   async function handleAddHusband() {
-    const supabase = createClient();
+    if (addHusbandLoading) return;
+    setAddHusbandLoading(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("add_spouse", {
+        p_member_id: m.member_id,
+        p_full_name: m.husband_name || "",
+        p_full_name_en: m.husband_name_en || m.husband_name || null,
+        p_gender: "M",
+      });
 
-    const { error } = await supabase.rpc("add_spouse", {
-      p_member_id: m.member_id,
-      p_full_name: m.husband_name || "",
-      p_full_name_en: m.husband_name_en || m.husband_name || null,
-      p_gender: "M",
-    });
-
-    if (error) {
-      console.error("add_spouse RPC failed:", error);
-      setToast({ type: "error", msg: t("save_error", lang) });
-      return;
+      if (error) {
+        console.error("add_spouse RPC failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        return;
+      }
+      router.refresh();
+    } finally {
+      setAddHusbandLoading(false);
     }
-    router.refresh();
   }
 
   // ── Add children bulk (view mode, for any married member) ───────────────
 
   async function handleAddChildrenBulk() {
+    if (addChildLoading) return;
     const filledRows = childRows.filter((r) => r.fullName.trim());
     if (filledRows.length === 0) {
       setToast({ type: "error", msg: t("save_error", lang) });
@@ -518,6 +527,7 @@ export default function FamilyCardClient({
   // ── Mark member as married ──────────────────────────────────────────────
 
   async function handleMarkMemberMarried() {
+    if (markMarriedLoading) return;
     setMarkMarriedLoading(true);
     try {
       const supabase = createClient();
@@ -546,6 +556,7 @@ export default function FamilyCardClient({
   // ── Add wife (for married male members without a spouse row) ────────────
 
   async function handleAddWife() {
+    if (addWifeLoading) return;
     setAddWifeLoading(true);
     try {
       const supabase = createClient();
@@ -585,6 +596,7 @@ export default function FamilyCardClient({
   // ── Promote child to member (mark as married) ──────────────────────────
 
   async function handlePromoteChild(childId: string, isDaughter: boolean) {
+    if (promoteLoading) return;
     setPromoteLoading(true);
     try {
       const supabase = createClient();
@@ -669,6 +681,7 @@ export default function FamilyCardClient({
   // ── Save ────────────────────────────────────────────────────────────────
 
   async function handleSave() {
+    if (saving) return;
     setSaving(true);
     setToast(null);
 
@@ -728,13 +741,14 @@ export default function FamilyCardClient({
 
       if (Object.keys(memberPayload).length > 0) {
         // Write edit history
-        await supabase.from("edit_history").insert({
+        const { error: histErr } = await supabase.from("edit_history").insert({
           table_name: "members",
           record_id: m.member_id,
           family_id: familyId,
           changed_by: userId,
           previous_values: m,
         });
+        if (histErr) console.warn("edit_history (members) insert failed:", histErr.message);
         // Update
         const { error } = await supabase
           .from("members")
@@ -758,13 +772,14 @@ export default function FamilyCardClient({
         }
 
         if (Object.keys(payload).length > 0) {
-          await supabase.from("edit_history").insert({
+          const { error: histErr2 } = await supabase.from("edit_history").insert({
             table_name: "spouses",
             record_id: s.spouse_id,
             family_id: familyId,
             changed_by: userId,
             previous_values: s,
           });
+          if (histErr2) console.warn("edit_history (spouses) insert failed:", histErr2.message);
           const { error } = await supabase
             .from("spouses")
             .update(payload)
@@ -788,13 +803,14 @@ export default function FamilyCardClient({
         }
 
         if (Object.keys(payload).length > 0) {
-          await supabase.from("edit_history").insert({
+          const { error: histErr3 } = await supabase.from("edit_history").insert({
             table_name: "children",
             record_id: c.child_id,
             family_id: familyId,
             changed_by: userId,
             previous_values: c,
           });
+          if (histErr3) console.warn("edit_history (children) insert failed:", histErr3.message);
           const { error } = await supabase
             .from("children")
             .update(payload)
@@ -868,6 +884,7 @@ export default function FamilyCardClient({
         <div className="mx-auto flex max-w-lg md:max-w-2xl items-center gap-3">
           <button
             onClick={() => router.back()}
+            aria-label={t("reg_back", lang)}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1136,9 +1153,10 @@ export default function FamilyCardClient({
                   {isMarriedDaughter && canEdit && (
                     <button
                       onClick={handleAddHusband}
-                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                      disabled={addHusbandLoading}
+                      className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
                     >
-                      + {t("add_husband_details", lang)}
+                      {addHusbandLoading ? t("saving", lang) : `+ ${t("add_husband_details", lang)}`}
                     </button>
                   )}
                 </>
@@ -1399,7 +1417,7 @@ export default function FamilyCardClient({
                               type="text"
                               value={promoteHusbandName}
                               onChange={(e) => setPromoteHusbandName(e.target.value)}
-                              className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-sm text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+                              className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
                             />
                           </div>
                         )}

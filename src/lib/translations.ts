@@ -146,6 +146,7 @@ const translations = {
   reset_setting: { en: "Setting…", hi: "सेट हो रहा है…" },
   reset_success: { en: "Password updated! You can now log in.", hi: "पासवर्ड बदल गया! अब आप लॉगिन कर सकते हैं।" },
   reset_error: { en: "Could not reset password. Please try again.", hi: "पासवर्ड रीसेट नहीं हो सका। कृपया पुनः प्रयास करें।" },
+  reset_link_expired: { en: "This password reset link is invalid or has expired. Please request a new one below.", hi: "यह पासवर्ड रीसेट लिंक अमान्य या समाप्त हो चुका है। कृपया नीचे नया लिंक अनुरोध करें।" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

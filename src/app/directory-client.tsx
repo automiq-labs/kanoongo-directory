@@ -103,13 +103,6 @@ export default function DirectoryClient({
     return result;
   }, [members, search, filterType, filterValue, lang]);
 
-  async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
-
   return (
     <div className="min-h-screen overflow-x-hidden bg-[var(--cream)] pb-20 md:ml-[240px] md:pb-8">
       {/* Header */}
