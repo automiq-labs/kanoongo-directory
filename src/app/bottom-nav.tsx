@@ -58,6 +58,16 @@ export default function BottomNav() {
       icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
     },
     {
+      href: "/celebrations",
+      labelKey: "nav_celebrations" as const,
+      icon: "M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z",
+    },
+    {
+      href: "/notices",
+      labelKey: "nav_notices" as const,
+      icon: "M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9",
+    },
+    {
       href: "/tree",
       labelKey: "nav_tree" as const,
       icon: "M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM9 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z",
@@ -119,7 +129,7 @@ export default function BottomNav() {
                     />
                   </svg>
                 </span>
-                <span className="mt-1 truncate text-[11px] font-medium leading-tight">
+                <span className="mt-1 truncate text-[10px] font-medium leading-tight">
                   {t(item.labelKey, lang)}
                 </span>
               </button>

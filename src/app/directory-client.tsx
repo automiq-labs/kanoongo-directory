@@ -13,6 +13,7 @@ import BottomNav from "./bottom-nav";
 import { Crest } from "@/components/Crest";
 import { resolveMyMember } from "@/lib/resolve-my-member";
 import { StaggerList, StaggerItem } from "@/components/Motion";
+import CelebrationsStrip from "@/components/CelebrationsStrip";
 
 type DirectoryMember = Pick<
   Member,
@@ -138,6 +139,9 @@ export default function DirectoryClient({
       </header>
 
       <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
+        {/* Celebrations */}
+        <CelebrationsStrip />
+
         {/* Search */}
         <div className="relative mb-4">
           <svg

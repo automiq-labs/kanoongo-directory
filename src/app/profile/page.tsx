@@ -12,6 +12,7 @@ import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils"
 import { resolveMyMember } from "@/lib/resolve-my-member";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
+import InitialsAvatar from "@/components/form/InitialsAvatar";
 
 interface UserProfile {
   email: string;
@@ -151,21 +152,12 @@ export default function ProfilePage() {
         {/* ── IDENTITY HERO ──────────────────────────────────────── */}
         <div className="fade-up flex flex-col items-center">
           <div className="relative">
-            {photoSrc ? (
-              <img
-                src={photoSrc}
-                alt=""
-                className="h-[88px] w-[88px] cursor-pointer rounded-full border-[1.5px] border-[var(--gold)] object-cover"
-                onClick={() => fileRef.current?.click()}
-              />
-            ) : (
-              <div
-                className="flex h-[88px] w-[88px] cursor-pointer items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-3xl font-bold text-[var(--maroon)]"
-                onClick={() => fileRef.current?.click()}
-              >
-                {name?.charAt(0) || "?"}
-              </div>
-            )}
+            <InitialsAvatar
+              name={profile?.memberName || ""}
+              nameEn={profile?.memberNameEn}
+              photoUrl={photoSrc}
+              size="lg"
+            />
             {uploading && (
               <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/30">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -183,6 +175,14 @@ export default function ProfilePage() {
               }}
             />
           </div>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="mt-2 text-[13px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:text-[var(--maroon)] disabled:opacity-50"
+          >
+            {photoSrc ? (lang === "en" ? "Change Picture" : "फ़ोटो बदलें") : (lang === "en" ? "Upload Picture" : "फ़ोटो अपलोड करें")}
+          </button>
           <h2 className="mt-4 font-display text-2xl font-semibold text-[var(--maroon-deep)]">
             {name || t("profile_your_account", lang)}
           </h2>

@@ -10,6 +10,9 @@ import { bi } from "@/lib/bilingual";
 import LanguageToggle from "@/app/language-toggle";
 import { Crest } from "@/components/Crest";
 import { MakerMark } from "@/components/MakerMark";
+import GotraSelect from "@/components/form/GotraSelect";
+import DateField from "@/components/form/DateField";
+import PhoneField from "@/components/form/PhoneField";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -142,6 +145,10 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [gender, setGender] = useState<string>("");
+  const [regGotra, setRegGotra] = useState("");
+  const [regGotraEn, setRegGotraEn] = useState("");
+  const [regDob, setRegDob] = useState("");
+  const [regMobile, setRegMobile] = useState("");
   const [creating, setCreating] = useState(false);
   const [emailConfirmNeeded, setEmailConfirmNeeded] = useState(false);
 
@@ -391,22 +398,30 @@ export default function RegisterPage() {
         return;
       }
 
-      // Set gender on the newly created member (new-member path only, not claims)
-      if (gender && !claimMemberId && !claimSpouseId) {
+      // Set optional fields on the newly created member (new-member path only, not claims)
+      if (!claimMemberId && !claimSpouseId) {
         try {
-          const { data: fam } = await supabase
-            .from("families")
-            .select("head_member_id")
-            .eq("auth_user_id", session.user.id)
-            .single();
-          if (fam?.head_member_id) {
-            await supabase
-              .from("members")
-              .update({ gender })
-              .eq("member_id", fam.head_member_id);
+          const optPayload: Record<string, string> = {};
+          if (gender) optPayload.gender = gender;
+          if (regGotra) optPayload.gotra = regGotra;
+          if (regGotraEn) optPayload.gotra_en = regGotraEn;
+          if (regDob) optPayload.dob = regDob;
+          if (regMobile) optPayload.mobile_1 = regMobile;
+          if (Object.keys(optPayload).length > 0) {
+            const { data: fam } = await supabase
+              .from("families")
+              .select("head_member_id")
+              .eq("auth_user_id", session.user.id)
+              .single();
+            if (fam?.head_member_id) {
+              await supabase
+                .from("members")
+                .update(optPayload)
+                .eq("member_id", fam.head_member_id);
+            }
           }
         } catch {
-          // Gender update is best-effort; don't block registration
+          // Best-effort; don't block registration
         }
       }
 
@@ -806,35 +821,59 @@ export default function RegisterPage() {
                 <h2 className="mb-5 text-lg font-semibold text-[var(--maroon-deep)]">
                   {t("reg_step_account_title", lang)}
                 </h2>
-                {/* Gender — only on new-member path (not claiming) */}
+                {/* Optional fields — only on new-member path (not claiming) */}
                 {!claimMemberId && !claimSpouseId && (
-                  <div className="mb-5">
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_gender", lang)}</label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setGender("M")}
-                        className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
-                          gender === "M"
-                            ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                            : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)] hover:bg-[var(--cream-panel)]"
-                        }`}
-                      >
-                        {t("male", lang)}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setGender("F")}
-                        className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
-                          gender === "F"
-                            ? "bg-[var(--maroon)] text-[var(--ivory)]"
-                            : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)] hover:bg-[var(--cream-panel)]"
-                        }`}
-                      >
-                        {t("female", lang)}
-                      </button>
+                  <>
+                    <div className="mb-5">
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_gender", lang)}</label>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setGender("M")}
+                          className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+                            gender === "M"
+                              ? "bg-[var(--maroon)] text-[var(--ivory)]"
+                              : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)] hover:bg-[var(--cream-panel)]"
+                          }`}
+                        >
+                          {t("male", lang)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGender("F")}
+                          className={`min-h-[44px] flex-1 rounded-[var(--r)] text-sm font-medium motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] ${
+                            gender === "F"
+                              ? "bg-[var(--maroon)] text-[var(--ivory)]"
+                              : "border border-[#ECE0C8] bg-[var(--raised)] text-[var(--maroon)] hover:bg-[var(--cream-panel)]"
+                          }`}
+                        >
+                          {t("female", lang)}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                    <div className="mb-5">
+                      <GotraSelect
+                        label={t("label_gotra", lang)}
+                        valueHi={regGotra}
+                        valueEn={regGotraEn}
+                        onChange={(hi, en) => { setRegGotra(hi); setRegGotraEn(en); }}
+                      />
+                    </div>
+                    <div className="mb-5">
+                      <DateField
+                        label={t("label_dob", lang)}
+                        value={regDob}
+                        onChange={setRegDob}
+                      />
+                    </div>
+                    <div className="mb-5">
+                      <PhoneField
+                        label={t("label_mobile", lang)}
+                        value={regMobile}
+                        onChange={setRegMobile}
+                      />
+                    </div>
+                  </>
                 )}
 
                 <div className="mb-4">

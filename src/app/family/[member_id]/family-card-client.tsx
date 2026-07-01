@@ -12,6 +12,11 @@ import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils"
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
 import { FadeIn } from "@/components/Motion";
+import GotraSelect from "@/components/form/GotraSelect";
+import CountryStateCity from "@/components/form/CountryStateCity";
+import DateField from "@/components/form/DateField";
+import PhoneField from "@/components/form/PhoneField";
+import InitialsAvatar from "@/components/form/InitialsAvatar";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -177,6 +182,11 @@ interface MemberEdits {
   gotra_en: string;
   husband_name: string;
   husband_name_en: string;
+  marital_status: string;
+  country: string;
+  country_en: string;
+  state: string;
+  state_en: string;
 }
 
 interface SpouseEdits {
@@ -206,6 +216,7 @@ interface ChildEdits {
 }
 
 function memberToEdits(m: Member): MemberEdits {
+  const mRec = m as unknown as Record<string, string | null>;
   return {
     full_name: m.full_name || "",
     full_name_en: m.full_name_en || "",
@@ -228,6 +239,11 @@ function memberToEdits(m: Member): MemberEdits {
     gotra_en: m.gotra_en || "",
     husband_name: m.husband_name || "",
     husband_name_en: m.husband_name_en || "",
+    marital_status: m.marital_status || "",
+    country: mRec.country || "",
+    country_en: mRec.country_en || "",
+    state: mRec.state || "",
+    state_en: mRec.state_en || "",
   };
 }
 
@@ -393,7 +409,7 @@ export default function FamilyCardClient({
   // Add-wife form state (for married male members)
   const [showAddWife, setShowAddWife] = useState(false);
   const [addWifeLoading, setAddWifeLoading] = useState(false);
-  const [wifeForm, setWifeForm] = useState({ fullName: "", fatherName: "", birthGotra: "", education: "", dob: "" });
+  const [wifeForm, setWifeForm] = useState({ fullName: "", fatherName: "", birthGotra: "", birthGotraEn: "", education: "", dob: "" });
 
   // Add-children form state (multi-row, view mode, for any married member)
   const emptyChildRow = { fullName: "", gender: "", dob: "", education: "" };
@@ -405,6 +421,14 @@ export default function FamilyCardClient({
   const [showMarkMarried, setShowMarkMarried] = useState(false);
   const [markMarriedGender, setMarkMarriedGender] = useState<string>(m.gender || "");
   const [markMarriedLoading, setMarkMarriedLoading] = useState(false);
+
+  // Remove spouse/child state
+  const [removeSpouseConfirm, setRemoveSpouseConfirm] = useState<string | null>(null);
+  const [removeChildConfirm, setRemoveChildConfirm] = useState<string | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+
+  // Post-save married→unmarried prompt
+  const [showUnmarriedPrompt, setShowUnmarriedPrompt] = useState(false);
 
   function handlePhotoSelect(
     file: File,
@@ -439,6 +463,9 @@ export default function FamilyCardClient({
     setChildPhotoRemoved({});
     setPhotoError(null);
     setToast(null);
+    setRemoveSpouseConfirm(null);
+    setRemoveChildConfirm(null);
+    setShowUnmarriedPrompt(false);
     setEditing(true);
   }
 
@@ -569,7 +596,7 @@ export default function FamilyCardClient({
         p_father_name: wifeForm.fatherName.trim() || null,
         p_father_name_en: wifeForm.fatherName.trim() || null,
         p_birth_gotra: wifeForm.birthGotra.trim() || null,
-        p_birth_gotra_en: wifeForm.birthGotra.trim() || null,
+        p_birth_gotra_en: wifeForm.birthGotraEn.trim() || wifeForm.birthGotra.trim() || null,
         p_education: wifeForm.education.trim() || null,
         p_education_en: wifeForm.education.trim() || null,
         p_dob: wifeForm.dob || null,
@@ -583,7 +610,7 @@ export default function FamilyCardClient({
       }
 
       setShowAddWife(false);
-      setWifeForm({ fullName: "", fatherName: "", birthGotra: "", education: "", dob: "" });
+      setWifeForm({ fullName: "", fatherName: "", birthGotra: "", birthGotraEn: "", education: "", dob: "" });
       router.refresh();
     } catch (err) {
       console.error("Add wife error:", err);
@@ -621,6 +648,50 @@ export default function FamilyCardClient({
       setToast({ type: "error", msg: t("save_error", lang) });
     } finally {
       setPromoteLoading(false);
+    }
+  }
+
+  // ── Soft-remove spouse/child ────────────────────────────────────────────
+
+  async function handleDeleteSpouse(spouseId: string) {
+    if (removeLoading) return;
+    setRemoveLoading(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("delete_spouse", { p_spouse_id: spouseId });
+      if (error) {
+        console.error("delete_spouse failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        return;
+      }
+      setRemoveSpouseConfirm(null);
+      router.refresh();
+    } catch (err) {
+      console.error("Delete spouse error:", err);
+      setToast({ type: "error", msg: t("save_error", lang) });
+    } finally {
+      setRemoveLoading(false);
+    }
+  }
+
+  async function handleDeleteChild(childId: string) {
+    if (removeLoading) return;
+    setRemoveLoading(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("delete_child", { p_child_id: childId });
+      if (error) {
+        console.error("delete_child failed:", error);
+        setToast({ type: "error", msg: t("save_error", lang) });
+        return;
+      }
+      setRemoveChildConfirm(null);
+      router.refresh();
+    } catch (err) {
+      console.error("Delete child error:", err);
+      setToast({ type: "error", msg: t("save_error", lang) });
+    } finally {
+      setRemoveLoading(false);
     }
   }
 
@@ -732,8 +803,8 @@ export default function FamilyCardClient({
       const memberPayload = buildBilingualPayload(
         memberEdits as unknown as Record<string, string>,
         m as unknown as Record<string, string | null>,
-        ["full_name", "education", "occupation", "addr_line1", "addr_line2", "city", "gotra", "husband_name"],
-        ["dob", "mobile_1", "mobile_2", "email", "pincode"]
+        ["full_name", "education", "occupation", "addr_line1", "addr_line2", "city", "country", "state", "gotra", "husband_name"],
+        ["dob", "mobile_1", "mobile_2", "email", "pincode", "marital_status"]
       );
       if (memberPhotoUrl !== m.photo_url) {
         memberPayload.photo_url = memberPhotoUrl;
@@ -819,6 +890,13 @@ export default function FamilyCardClient({
         }
       }
 
+      // Check for married → unmarried transition
+      const wasMarried = m.marital_status === "married";
+      const nowUnmarried = memberEdits.marital_status !== "married" && memberEdits.marital_status !== "";
+      if (wasMarried && nowUnmarried && (spouses.length > 0 || childrenData.length > 0)) {
+        setShowUnmarriedPrompt(true);
+      }
+
       setEditing(false);
       setToast({ type: "success", msg: t("saved", lang) });
       setTimeout(() => setToast(null), 3000);
@@ -837,10 +915,13 @@ export default function FamilyCardClient({
   const gotra = bi(m.gotra, m.gotra_en, lang);
   const education = bi(m.education, m.education_en, lang);
   const occupation = bi(m.occupation, m.occupation_en, lang);
+  const mRec = m as unknown as Record<string, string | null>;
   const city = bi(m.city, m.city_en, lang);
+  const stateDisplay = bi(mRec.state, mRec.state_en, lang);
+  const countryDisplay = bi(mRec.country, mRec.country_en, lang);
   const addr1 = bi(m.addr_line1, m.addr_line1_en, lang);
   const addr2 = bi(m.addr_line2, m.addr_line2_en, lang);
-  const address = [addr1, addr2, city, m.pincode].filter(Boolean).join(", ");
+  const address = [addr1, addr2, city, stateDisplay, m.pincode, countryDisplay].filter(Boolean).join(", ");
   const husbandName = bi(m.husband_name, m.husband_name_en, lang);
   const isFemale = m.gender === "F";
   const isMarriedDaughter = m.member_id.startsWith("D");
@@ -849,7 +930,7 @@ export default function FamilyCardClient({
   // For married daughters: if a real spouse row exists, show that instead of text husband_name
   const hasRealHusbandSpouse = isMarriedDaughter && spouses.length > 0;
 
-  // ── Merged children list (member-children + child-row children, sorted by dob) ──
+  // ── Merged children list (member-children eldest-first from RPC, then child-rows) ──
 
   type MergedChild =
     | { source: "member"; data: MemberChild }
@@ -858,19 +939,7 @@ export default function FamilyCardClient({
   const mergedChildren: MergedChild[] = [
     ...memberChildren.map((mc): MergedChild => ({ source: "member", data: mc })),
     ...childrenData.map((c, idx): MergedChild => ({ source: "child", data: c, idx })),
-  ].sort((a, b) => {
-    const dobA = a.data.dob || "";
-    const dobB = b.data.dob || "";
-    // Both have dob: sort ascending
-    if (dobA && dobB) return dobA.localeCompare(dobB);
-    // One has dob, the other doesn't: dob first
-    if (dobA && !dobB) return -1;
-    if (!dobA && dobB) return 1;
-    // Neither has dob: sort by name
-    const nameA = (a.data.full_name_en || a.data.full_name || "").toLowerCase();
-    const nameB = (b.data.full_name_en || b.data.full_name || "").toLowerCase();
-    return nameA.localeCompare(nameB);
-  });
+  ];
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -934,20 +1003,32 @@ export default function FamilyCardClient({
         <FadeIn>
         <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-5 shadow-card">
           <div className="flex items-center gap-4">
-            <PhotoAvatar
-              photoUrl={m.photo_url}
-              previewUrl={editing ? (memberPhotoRemoved ? null : memberPhotoPreview) : null}
-              fallbackInitial={name?.charAt(0) || "?"}
-              editing={editing}
-              onFileSelect={(f) =>
-                handlePhotoSelect(f, setMemberPhotoFile, setMemberPhotoPreview, setMemberPhotoRemoved)
-              }
-              onRemove={() => {
-                setMemberPhotoRemoved(true);
-                setMemberPhotoFile(null);
-                setMemberPhotoPreview(null);
-              }}
-            />
+            {editing ? (
+              <div className="flex flex-col items-center gap-1">
+                <PhotoAvatar
+                  photoUrl={m.photo_url}
+                  previewUrl={memberPhotoRemoved ? null : memberPhotoPreview}
+                  fallbackInitial={name?.charAt(0) || "?"}
+                  editing={true}
+                  onFileSelect={(f) =>
+                    handlePhotoSelect(f, setMemberPhotoFile, setMemberPhotoPreview, setMemberPhotoRemoved)
+                  }
+                  onRemove={() => {
+                    setMemberPhotoRemoved(true);
+                    setMemberPhotoFile(null);
+                    setMemberPhotoPreview(null);
+                  }}
+                />
+                <span className="text-[11px] font-medium text-[var(--gold-deep)]">Upload Picture</span>
+              </div>
+            ) : (
+              <InitialsAvatar
+                name={m.full_name}
+                nameEn={m.full_name_en}
+                photoUrl={m.photo_url}
+                deceased={m.is_deceased}
+              />
+            )}
             <div className="min-w-0 flex-1">
               {editing ? (
                 <EditRow
@@ -995,10 +1076,11 @@ export default function FamilyCardClient({
 
           {editing && (
             <div className="mt-3">
-              <EditRow
+              <GotraSelect
                 label={t("label_gotra", lang)}
-                value={getEditVal(memberEdits as unknown as Record<string, string>, "gotra", lang)}
-                onChange={(v) => setMemberField("gotra", v)}
+                valueHi={memberEdits.gotra}
+                valueEn={memberEdits.gotra_en}
+                onChange={(hi, en) => setMemberEdits((prev) => ({ ...prev, gotra: hi, gotra_en: en }))}
               />
             </div>
           )}
@@ -1024,11 +1106,25 @@ export default function FamilyCardClient({
                 value={getEditVal(memberEdits as unknown as Record<string, string>, "occupation", lang)}
                 onChange={(v) => setMemberField("occupation", v)}
               />
-              <EditRow
+              <DateField
                 label={t("label_dob", lang)}
                 value={memberEdits.dob}
                 onChange={(v) => setMemberPlain("dob", v)}
               />
+              <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                  {t("label_marital_status", lang)}
+                </label>
+                <select
+                  value={memberEdits.marital_status}
+                  onChange={(e) => setMemberPlain("marital_status", e.target.value)}
+                  className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+                >
+                  <option value="">— Select —</option>
+                  <option value="married">{lang === "en" ? "Married" : "विवाहित"}</option>
+                  <option value="unmarried">{lang === "en" ? "Unmarried" : "अविवाहित"}</option>
+                </select>
+              </div>
             </>
           ) : (
             <>
@@ -1114,12 +1210,30 @@ export default function FamilyCardClient({
             <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
               {editing ? (
                 <>
-                  <EditRow label={t("label_mobile", lang)} value={memberEdits.mobile_1} onChange={(v) => setMemberPlain("mobile_1", v)} type="tel" />
-                  <EditRow label={t("label_mobile_2", lang)} value={memberEdits.mobile_2} onChange={(v) => setMemberPlain("mobile_2", v)} type="tel" />
+                  <PhoneField label={t("label_mobile", lang)} value={memberEdits.mobile_1} onChange={(v) => setMemberPlain("mobile_1", v)} />
+                  <PhoneField label={t("label_mobile_2", lang)} value={memberEdits.mobile_2} onChange={(v) => setMemberPlain("mobile_2", v)} />
                   <EditRow label={t("label_email", lang)} value={memberEdits.email} onChange={(v) => setMemberPlain("email", v)} type="email" />
                   <EditRow label={t("label_addr_line1", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line1", lang)} onChange={(v) => setMemberField("addr_line1", v)} />
                   <EditRow label={t("label_addr_line2", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line2", lang)} onChange={(v) => setMemberField("addr_line2", v)} />
-                  <EditRow label={t("label_city", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "city", lang)} onChange={(v) => setMemberField("city", v)} />
+                  <CountryStateCity
+                    country={memberEdits.country}
+                    countryEn={memberEdits.country_en}
+                    state={memberEdits.state}
+                    stateEn={memberEdits.state_en}
+                    city={memberEdits.city}
+                    cityEn={memberEdits.city_en}
+                    onChange={(partial) =>
+                      setMemberEdits((prev) => ({
+                        ...prev,
+                        ...(partial.country !== undefined && { country: partial.country }),
+                        ...(partial.countryEn !== undefined && { country_en: partial.countryEn }),
+                        ...(partial.state !== undefined && { state: partial.state }),
+                        ...(partial.stateEn !== undefined && { state_en: partial.stateEn }),
+                        ...(partial.city !== undefined && { city: partial.city }),
+                        ...(partial.cityEn !== undefined && { city_en: partial.cityEn }),
+                      }))
+                    }
+                  />
                   <EditRow label={t("label_pincode", lang)} value={memberEdits.pincode} onChange={(v) => setMemberPlain("pincode", v)} />
                 </>
               ) : (
@@ -1224,12 +1338,53 @@ export default function FamilyCardClient({
                   {editing ? (
                     <>
                       <EditRow label={t("label_father_name", lang)} value={getEditVal(edits as unknown as Record<string, string>, "father_name", lang)} onChange={(v) => setSpouseField(idx, "father_name", v)} />
-                      <EditRow label={t("label_birth_gotra", lang)} value={getEditVal(edits as unknown as Record<string, string>, "birth_gotra", lang)} onChange={(v) => setSpouseField(idx, "birth_gotra", v)} />
+                      <GotraSelect
+                        label={t("label_birth_gotra", lang)}
+                        valueHi={edits.birth_gotra}
+                        valueEn={edits.birth_gotra_en}
+                        onChange={(hi, en) => setSpouseEdits((prev) => {
+                          const copy = [...prev];
+                          copy[idx] = { ...copy[idx], birth_gotra: hi, birth_gotra_en: en };
+                          return copy;
+                        })}
+                      />
                       <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setSpouseField(idx, "education", v)} />
-                      <EditRow label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setSpousePlain(idx, "dob", v)} />
-                      <EditRow label={t("label_dom", lang)} value={edits.date_of_marriage} onChange={(v) => setSpousePlain(idx, "date_of_marriage", v)} />
-                      <EditRow label={t("label_mobile", lang)} value={edits.mobile} onChange={(v) => setSpousePlain(idx, "mobile", v)} type="tel" />
+                      <DateField label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setSpousePlain(idx, "dob", v)} />
+                      <DateField label={t("label_dom", lang)} value={edits.date_of_marriage} onChange={(v) => setSpousePlain(idx, "date_of_marriage", v)} />
+                      <PhoneField label={t("label_mobile", lang)} value={edits.mobile} onChange={(v) => setSpousePlain(idx, "mobile", v)} />
                       <EditRow label={t("label_email", lang)} value={edits.email} onChange={(v) => setSpousePlain(idx, "email", v)} type="email" />
+                      {/* Remove spouse */}
+                      {canEdit && (
+                        removeSpouseConfirm === s.spouse_id ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="flex-1 text-sm text-[var(--maroon-deep)]">Remove {sName}?</span>
+                            <button
+                              type="button"
+                              onClick={() => setRemoveSpouseConfirm(null)}
+                              disabled={removeLoading}
+                              className="rounded-[var(--r)] border border-[var(--hairline)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] disabled:opacity-50"
+                            >
+                              {t("cancel", lang)}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSpouse(s.spouse_id)}
+                              disabled={removeLoading}
+                              className="rounded-[var(--r)] bg-[var(--maroon)] px-3 py-1.5 text-xs font-medium text-[var(--ivory)] disabled:opacity-50"
+                            >
+                              {removeLoading ? t("saving", lang) : t("confirm", lang)}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setRemoveSpouseConfirm(s.spouse_id)}
+                            className="mt-2 text-xs font-medium text-[var(--muted)] hover:text-[var(--maroon)]"
+                          >
+                            Remove
+                          </button>
+                        )
+                      )}
                     </>
                   ) : (
                     <>
@@ -1269,12 +1424,17 @@ export default function FamilyCardClient({
                 <div className="space-y-3">
                   <EditRow label={t("label_full_name", lang)} value={wifeForm.fullName} onChange={(v) => setWifeForm((p) => ({ ...p, fullName: v }))} />
                   <EditRow label={t("label_father_name", lang)} value={wifeForm.fatherName} onChange={(v) => setWifeForm((p) => ({ ...p, fatherName: v }))} />
-                  <EditRow label={t("label_birth_gotra", lang)} value={wifeForm.birthGotra} onChange={(v) => setWifeForm((p) => ({ ...p, birthGotra: v }))} />
+                  <GotraSelect
+                    label={t("label_birth_gotra", lang)}
+                    valueHi={wifeForm.birthGotra}
+                    valueEn={wifeForm.birthGotraEn}
+                    onChange={(hi, en) => setWifeForm((p) => ({ ...p, birthGotra: hi, birthGotraEn: en }))}
+                  />
                   <EditRow label={t("label_education", lang)} value={wifeForm.education} onChange={(v) => setWifeForm((p) => ({ ...p, education: v }))} />
-                  <EditRow label={t("label_dob", lang)} value={wifeForm.dob} onChange={(v) => setWifeForm((p) => ({ ...p, dob: v }))} />
+                  <DateField label={t("label_dob", lang)} value={wifeForm.dob} onChange={(v) => setWifeForm((p) => ({ ...p, dob: v }))} />
                   <div className="flex gap-2 pt-2">
                     <button
-                      onClick={() => { setShowAddWife(false); setWifeForm({ fullName: "", fatherName: "", birthGotra: "", education: "", dob: "" }); }}
+                      onClick={() => { setShowAddWife(false); setWifeForm({ fullName: "", fatherName: "", birthGotra: "", birthGotraEn: "", education: "", dob: "" }); }}
                       disabled={addWifeLoading}
                       className="min-h-[44px] flex-1 rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] text-sm font-medium text-[var(--muted)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] disabled:opacity-50"
                     >
@@ -1374,8 +1534,40 @@ export default function FamilyCardClient({
                         <div className="flex-1">
                           <EditRow label={t("label_full_name", lang)} value={getEditVal(edits as unknown as Record<string, string>, "full_name", lang)} onChange={(v) => setChildField(idx, "full_name", v)} />
                           <EditRow label={t("label_gender", lang)} value={edits.gender} onChange={(v) => setChildPlain(idx, "gender", v)} />
-                          <EditRow label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setChildPlain(idx, "dob", v)} />
+                          <DateField label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setChildPlain(idx, "dob", v)} />
                           <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setChildField(idx, "education", v)} />
+                          {/* Remove child */}
+                          {canEdit && (
+                            removeChildConfirm === c.child_id ? (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="flex-1 text-sm text-[var(--maroon-deep)]">Remove {cName}?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setRemoveChildConfirm(null)}
+                                  disabled={removeLoading}
+                                  className="rounded-[var(--r)] border border-[var(--hairline)] px-3 py-1.5 text-xs font-medium text-[var(--muted)] disabled:opacity-50"
+                                >
+                                  {t("cancel", lang)}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteChild(c.child_id)}
+                                  disabled={removeLoading}
+                                  className="rounded-[var(--r)] bg-[var(--maroon)] px-3 py-1.5 text-xs font-medium text-[var(--ivory)] disabled:opacity-50"
+                                >
+                                  {removeLoading ? t("saving", lang) : t("confirm", lang)}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setRemoveChildConfirm(c.child_id)}
+                                className="mt-2 text-xs font-medium text-[var(--muted)] hover:text-[var(--maroon)]"
+                              >
+                                Remove
+                              </button>
+                            )
+                          )}
                         </div>
                       ) : (
                         <div className="min-w-0 flex-1">
@@ -1468,7 +1660,7 @@ export default function FamilyCardClient({
                             )}
                             <EditRow label={t("label_full_name", lang)} value={row.fullName} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, fullName: v } : r))} />
                             <EditRow label={t("label_gender", lang)} value={row.gender} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, gender: v } : r))} />
-                            <EditRow label={t("label_dob", lang)} value={row.dob} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, dob: v } : r))} />
+                            <DateField label={t("label_dob", lang)} value={row.dob} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, dob: v } : r))} />
                             <EditRow label={t("label_education", lang)} value={row.education} onChange={(v) => setChildRows((prev) => prev.map((r, j) => j === ri ? { ...r, education: v } : r))} />
                           </div>
                         </div>
@@ -1527,6 +1719,65 @@ export default function FamilyCardClient({
               {saving ? t("saving", lang) : t("save", lang)}
             </button>
           </div>
+        )}
+
+        {/* ── POST-SAVE UNMARRIED PROMPT ─────────────────────────────── */}
+        {showUnmarriedPrompt && !editing && (
+          <FadeIn>
+          <div className="mt-4 rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
+            <p className="mb-3 text-sm font-medium text-[var(--maroon-deep)]">
+              {lang === "en"
+                ? "Status changed to unmarried. Would you like to remove any related records?"
+                : "स्थिति अविवाहित में बदली गई। क्या आप संबंधित रिकॉर्ड हटाना चाहेंगे?"}
+            </p>
+
+            {spouses.map((s) => {
+              const sN = bi(s.full_name, s.full_name_en, lang);
+              return (
+                <div key={s.spouse_id} className="flex items-center justify-between border-b border-[var(--hairline)] py-2 last:border-0">
+                  <span className="text-sm text-[var(--maroon-deep)]">
+                    {lang === "en" ? `Remove ${sN}'s details?` : `${sN} का विवरण हटाएं?`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSpouse(s.spouse_id)}
+                    disabled={removeLoading}
+                    className="rounded-[var(--r)] bg-[var(--maroon)] px-3 py-1.5 text-xs font-medium text-[var(--ivory)] disabled:opacity-50"
+                  >
+                    {removeLoading ? t("saving", lang) : t("confirm", lang)}
+                  </button>
+                </div>
+              );
+            })}
+
+            {childrenData.map((c) => {
+              const cN = bi(c.full_name, c.full_name_en, lang);
+              return (
+                <div key={c.child_id} className="flex items-center justify-between border-b border-[var(--hairline)] py-2 last:border-0">
+                  <span className="text-sm text-[var(--maroon-deep)]">
+                    {lang === "en" ? `Remove ${cN}?` : `${cN} को हटाएं?`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteChild(c.child_id)}
+                    disabled={removeLoading}
+                    className="rounded-[var(--r)] bg-[var(--maroon)] px-3 py-1.5 text-xs font-medium text-[var(--ivory)] disabled:opacity-50"
+                  >
+                    {removeLoading ? t("saving", lang) : t("confirm", lang)}
+                  </button>
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setShowUnmarriedPrompt(false)}
+              className="mt-3 w-full rounded-[var(--r)] border border-[var(--hairline)] py-2.5 text-sm font-medium text-[var(--muted)] hover:bg-[var(--cream-panel)]"
+            >
+              {lang === "en" ? "Keep all records" : "सभी रिकॉर्ड रखें"}
+            </button>
+          </div>
+          </FadeIn>
         )}
 
         {/* ── LINEAGE (view only, never editable) ──────────────────────── */}

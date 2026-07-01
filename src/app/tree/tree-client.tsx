@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useLang } from "@/lib/language-context";
 import { t } from "@/lib/translations";
@@ -9,275 +10,155 @@ import { bi } from "@/lib/bilingual";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
 import { Crest } from "@/components/Crest";
+import InitialsAvatar from "@/components/form/InitialsAvatar";
+import { FadeIn } from "@/components/Motion";
 
-interface TreeSpouse {
+// ── Types ──────────────────────────────────────────────────────────────────
+
+interface FamilyLine {
+  root_id: string;
   full_name: string;
   full_name_en: string | null;
-  date_of_death: string | null;
-}
-
-interface TreeNode {
-  member_id: string;
-  full_name: string;
-  full_name_en: string | null;
+  photo_url: string | null;
   is_deceased: boolean;
-  spouses: TreeSpouse[];
-  childCount: number;
+  branch_size: number;
+  generations: number;
 }
 
-// ── Animated collapse wrapper ───────────────────────────────────────────────
-
-function AnimatedChildren({
-  expanded,
-  children,
-}: {
-  expanded: boolean;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | "auto">(0);
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (expanded) {
-      setVisible(true);
-      // Measure after render
-      requestAnimationFrame(() => {
-        if (ref.current) setHeight(ref.current.scrollHeight);
-      });
-    } else {
-      // Collapse: set explicit height first, then 0
-      if (ref.current) setHeight(ref.current.scrollHeight);
-      requestAnimationFrame(() => setHeight(0));
-    }
-  }, [expanded]);
-
-  function handleTransitionEnd() {
-    if (expanded) {
-      setHeight("auto"); // allow dynamic content after open
-    } else {
-      setVisible(false);
-    }
-  }
-
-  if (!visible && !expanded) return null;
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        height: height === "auto" ? "auto" : `${height}px`,
-        overflow: height === "auto" ? "visible" : "hidden",
-        transition: "height var(--dur) var(--ease-out)",
-      }}
-      onTransitionEnd={handleTransitionEnd}
-    >
-      {children}
-    </div>
-  );
-}
-
-// ── Recursive tree row ──────────────────────────────────────────────────────
-
-const INDENT_PX = 16; // compact indent to prevent overflow on narrow screens
-const MAX_INDENT_DEPTH = 8; // cap indentation beyond this
-
-function TreeRow({
-  node,
-  depth,
-  isRoot = false,
-}: {
-  node: TreeNode;
+interface TreeMember {
+  member_id: string;
+  parent_id: string | null;
+  full_name: string;
+  full_name_en: string | null;
+  photo_url: string | null;
+  is_deceased: boolean;
+  gender: string | null;
+  marital_status: string | null;
   depth: number;
-  isRoot?: boolean;
-}) {
-  const { lang } = useLang();
-  const [expanded, setExpanded] = useState(false);
-  const [children, setChildren] = useState<TreeNode[] | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const hasChildren = node.childCount > 0;
-
-  const fetchChildren = useCallback(async () => {
-    if (children) return; // already loaded
-    setLoading(true);
-    const supabase = createClient();
-
-    // Fetch children members + their spouses + their child counts in parallel
-    const { data: kids } = await supabase
-      .from("members")
-      .select("member_id, full_name, full_name_en, is_deceased")
-      .eq("father_member_id", node.member_id)
-      .order("full_name");
-
-    const kidIds = (kids || []).map((k) => k.member_id);
-
-    const [spouseResult, countResult] = await Promise.all([
-      supabase
-        .from("spouses")
-        .select("member_id, full_name, full_name_en, date_of_death")
-        .in("member_id", kidIds),
-      supabase
-        .from("members")
-        .select("father_member_id")
-        .in("father_member_id", kidIds),
-    ]);
-
-    const spouseMap: Record<string, TreeSpouse[]> = {};
-    for (const s of spouseResult.data || []) {
-      if (!spouseMap[s.member_id]) spouseMap[s.member_id] = [];
-      spouseMap[s.member_id].push(s as TreeSpouse);
-    }
-
-    const countMap: Record<string, number> = {};
-    for (const row of (countResult.data || []) as { father_member_id: string }[]) {
-      countMap[row.father_member_id] = (countMap[row.father_member_id] || 0) + 1;
-    }
-
-    const nodes: TreeNode[] = (kids || []).map((k) => ({
-      ...k,
-      spouses: spouseMap[k.member_id] || [],
-      childCount: countMap[k.member_id] || 0,
-    }));
-
-    setChildren(nodes);
-    setLoading(false);
-  }, [node.member_id, children]);
-
-  function handleToggle() {
-    if (!hasChildren) return;
-    if (!expanded) fetchChildren();
-    setExpanded((prev) => !prev);
-  }
-
-  const name = bi(node.full_name, node.full_name_en, lang);
-  const spouseName =
-    node.spouses.length > 0
-      ? bi(node.spouses[0].full_name, node.spouses[0].full_name_en, lang)
-      : null;
-  const spouseDeceased = node.spouses.length > 0 && !!node.spouses[0].date_of_death;
-
-  return (
-    <div>
-      {/* This row */}
-      <div
-        className={`flex items-center gap-2.5 rounded-[var(--r)] py-3 ${isRoot ? "px-1" : "px-2 motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"}`}
-        style={{ paddingLeft: isRoot ? undefined : `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX}px` }}
-      >
-        {/* Expand/collapse chevron */}
-        {hasChildren ? (
-          <button
-            onClick={handleToggle}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[var(--gold)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)] active:bg-[var(--cream-panel)]"
-            aria-label={expanded ? "Collapse" : "Expand"}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className={`h-4 w-4 motion-safe:transition-transform motion-safe:duration-[var(--dur)] ${
-                expanded ? "rotate-90" : ""
-              }`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2.5}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        ) : (
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center">
-            <span className="h-[5px] w-[5px] rounded-full bg-[var(--gold)] opacity-40" />
-          </span>
-        )}
-
-        {/* Name + spouse */}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-1.5">
-            <Link
-              href={`/family/${node.member_id}`}
-              className={`font-display font-semibold hover:text-[var(--maroon)] ${
-                isRoot ? "text-[17px]" : "text-[15px]"
-              } ${node.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}
-            >
-              {name}
-            </Link>
-            {spouseName && (
-              <span className="flex items-center gap-1 text-[13px] text-[var(--muted)]">
-                <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />
-                {t("tree_with", lang)}{" "}
-                <span className={spouseDeceased ? "text-[var(--muted)]" : "text-[var(--gold-deep)]"}>
-                  {spouseName}
-                </span>
-              </span>
-            )}
-          </div>
-
-          {/* Child count pill */}
-          {hasChildren && !expanded && (
-            <button
-              onClick={handleToggle}
-              className="mt-1 inline-flex items-center gap-1 rounded-full border border-[var(--gold)]/20 bg-[var(--cream-panel)] px-2.5 py-0.5 text-[11px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream)]"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              {node.childCount} {t("tree_children_count", lang)}
-            </button>
-          )}
-        </div>
-
-        {/* Navigate chevron for root nodes */}
-        {isRoot && (
-          <Link href={`/family/${node.member_id}`} className="flex h-7 w-7 shrink-0 items-center justify-center text-[var(--gold)] opacity-60">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-        )}
-      </div>
-
-      {/* Children (expanded) */}
-      {hasChildren && (
-        <AnimatedChildren expanded={expanded}>
-          <div className="relative" style={{ marginLeft: `${Math.min(depth, MAX_INDENT_DEPTH) * INDENT_PX + 10}px` }}>
-            {/* Gold vertical spine */}
-            <div className="absolute left-[3px] top-0 bottom-3 w-[2px] bg-[var(--gold)] opacity-50" />
-
-            {loading && !children && (
-              <p
-                className="py-3 text-sm text-[var(--muted)]"
-                style={{ paddingLeft: "22px" }}
-              >
-                {t("tree_loading", lang)}
-              </p>
-            )}
-
-            {children?.map((child) => (
-              <div key={child.member_id} className="relative">
-                {/* Horizontal connector joint */}
-                <div
-                  className="absolute left-[3px] top-[22px] h-[2px] w-3 bg-[var(--gold)] opacity-50"
-                />
-                <div style={{ paddingLeft: "4px" }}>
-                  <TreeRow node={child} depth={0} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </AnimatedChildren>
-      )}
-    </div>
-  );
 }
 
-// ── Main tree page ──────────────────────────────────────────────────────────
+// ── Main tree page ─────────────────────────────────────────────────────────
 
-export default function TreeClient({ roots }: { roots: TreeNode[] }) {
+export default function TreeClient() {
   const { lang } = useLang();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClient(), []);
+
+  const selectedLineId = searchParams.get("line");
+
+  // ── LINE PICKER STATE ───────────────────────────────────────────────────
+
+  const [lines, setLines] = useState<FamilyLine[]>([]);
+  const [linesLoading, setLinesLoading] = useState(true);
+  const [showSmaller, setShowSmaller] = useState(false);
+
+  // ── DRILL-DOWN STATE ────────────────────────────────────────────────────
+
+  const [treeNodes, setTreeNodes] = useState<TreeMember[]>([]);
+  const [treeLoading, setTreeLoading] = useState(false);
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  // Fetch family lines
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLines() {
+      const { data, error } = await supabase.rpc("get_family_lines");
+      if (error) console.error("get_family_lines error:", error);
+      if (!cancelled) {
+        setLines((data as FamilyLine[]) || []);
+        setLinesLoading(false);
+      }
+    }
+    loadLines();
+    return () => { cancelled = true; };
+  }, [supabase]);
+
+  // When a line is selected, fetch the full tree once
+  useEffect(() => {
+    if (!selectedLineId) return;
+    let cancelled = false;
+    async function loadTree() {
+      setTreeLoading(true);
+      const { data, error } = await supabase.rpc("get_family_tree", { p_root_id: selectedLineId });
+      if (error) console.error("get_family_tree error:", error);
+      if (cancelled) return;
+      const d = data as { found: boolean; nodes: TreeMember[] } | null;
+      if (d?.found) {
+        setTreeNodes(d.nodes);
+        setFocusId(selectedLineId);
+      }
+      setTreeLoading(false);
+    }
+    loadTree();
+    return () => { cancelled = true; };
+  }, [selectedLineId, supabase]);
+
+  // ── DERIVED: in-memory lookups ──────────────────────────────────────────
+
+  const byId = useMemo(() => {
+    const map = new Map<string, TreeMember>();
+    for (const n of treeNodes) map.set(n.member_id, n);
+    return map;
+  }, [treeNodes]);
+
+  const childrenOf = useMemo(() => {
+    const map = new Map<string, TreeMember[]>();
+    for (const n of treeNodes) {
+      if (n.parent_id) {
+        const arr = map.get(n.parent_id) || [];
+        arr.push(n);
+        map.set(n.parent_id, arr);
+      }
+    }
+    return map;
+  }, [treeNodes]);
+
+  // Breadcrumb: walk parent_id from focusId up to root, then reverse
+  const breadcrumb = useMemo(() => {
+    if (!focusId) return [];
+    const path: TreeMember[] = [];
+    let current = byId.get(focusId);
+    while (current) {
+      path.push(current);
+      if (!current.parent_id) break;
+      current = byId.get(current.parent_id);
+    }
+    return path.reverse();
+  }, [focusId, byId]);
+
+  const focusPerson = focusId ? byId.get(focusId) : null;
+  const focusChildren = focusId ? childrenOf.get(focusId) || [] : [];
+
+  // ── NAVIGATION ──────────────────────────────────────────────────────────
+
+  function selectLine(rootId: string) {
+    router.push(`/tree?line=${rootId}`);
+  }
+
+  function goBack() {
+    setTreeNodes([]);
+    setFocusId(null);
+    router.push("/tree");
+  }
+
+  function recenter(memberId: string) {
+    setFocusId(memberId);
+  }
+
+  function handleChildTap(child: TreeMember) {
+    const hasGrandchildren = (childrenOf.get(child.member_id) || []).length > 0;
+    if (hasGrandchildren) {
+      recenter(child.member_id);
+    } else {
+      router.push(`/family/${child.member_id}`);
+    }
+  }
+
+  const mainLines = lines.filter((l) => l.branch_size >= 2);
+  const smallLines = lines.filter((l) => l.branch_size === 1);
+
+  // ── RENDER ──────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[var(--cream)] pb-24 md:ml-[240px] md:pb-8">
@@ -297,11 +178,23 @@ export default function TreeClient({ roots }: { roots: TreeNode[] }) {
         className="sticky top-0 z-10 border-b border-[var(--hairline)] px-4 pb-3 shadow-[var(--shadow-header)]"
         style={{ background: "linear-gradient(180deg, #33121a, var(--ink))", paddingTop: "max(12px, env(safe-area-inset-top, 0px))" }}
       >
-        <div className="mx-auto flex max-w-lg md:max-w-2xl items-center justify-between">
+        <div className="mx-auto flex max-w-lg md:max-w-xl items-center justify-between">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="shrink-0">
-              <Crest size={24} />
-            </div>
+            {selectedLineId ? (
+              <button
+                onClick={goBack}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
+                aria-label={t("tree_all_lines", lang)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            ) : (
+              <div className="shrink-0">
+                <Crest size={24} />
+              </div>
+            )}
             <h1 className="truncate font-display text-[16px] font-semibold text-[#F4E3C1]">
               {t("tree_title", lang)}
             </h1>
@@ -310,19 +203,250 @@ export default function TreeClient({ roots }: { roots: TreeNode[] }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
-        <div className="space-y-3">
-          {roots.map((root, i) => (
-            <div
-              key={root.member_id}
-              className="tree-fade rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] px-3 py-1 shadow-card"
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              <TreeRow node={root} depth={0} isRoot />
+      {/* ── LINE PICKER ──────────────────────────────────────────── */}
+      {!selectedLineId && (
+        <div className="mx-auto max-w-lg md:max-w-xl px-4 pt-4">
+          <p className="mb-4 text-sm text-[var(--muted)]">
+            {t("tree_pick_line", lang)}
+          </p>
+
+          {linesLoading && (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-3 rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
+                  <div className="h-11 w-11 animate-pulse rounded-full bg-[var(--cream-panel)]" />
+                  <div className="flex-1">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-[var(--cream-panel)]" />
+                    <div className="mt-2 h-3 w-1/3 animate-pulse rounded bg-[var(--cream-panel)]" />
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {!linesLoading && (
+            <div className="space-y-2">
+              {mainLines.map((line, i) => {
+                const lineName = bi(line.full_name, line.full_name_en, lang);
+                return (
+                  <button
+                    key={line.root_id}
+                    onClick={() => selectLine(line.root_id)}
+                    className="tree-fade flex w-full items-center gap-3 rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 text-left shadow-card motion-safe:transition-[transform,box-shadow] motion-safe:duration-[var(--dur)] hover:-translate-y-[2px] hover:shadow-lift active:scale-[.98]"
+                    style={{ animationDelay: `${i * 50}ms` }}
+                  >
+                    <InitialsAvatar name={line.full_name} nameEn={line.full_name_en} photoUrl={line.photo_url} deceased={line.is_deceased} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className={`font-display text-base font-semibold ${line.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>
+                        {lineName}
+                      </p>
+                      <p className="mt-0.5 text-[13px] text-[var(--muted)]">
+                        {line.branch_size} {t("tree_members", lang)} · {line.generations} {t("tree_gen", lang)}
+                      </p>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-[var(--gold)] opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                );
+              })}
+
+              {smallLines.length > 0 && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => setShowSmaller((p) => !p)}
+                    className="mb-2 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 motion-safe:transition-transform motion-safe:duration-[var(--dur)] ${showSmaller ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    {t("tree_smaller", lang)} ({smallLines.length})
+                  </button>
+                  {showSmaller && smallLines.map((line) => {
+                    const lineName = bi(line.full_name, line.full_name_en, lang);
+                    return (
+                      <button
+                        key={line.root_id}
+                        onClick={() => selectLine(line.root_id)}
+                        className="flex w-full items-center gap-3 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-3 text-left motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                      >
+                        <InitialsAvatar name={line.full_name} nameEn={line.full_name_en} photoUrl={line.photo_url} deceased={line.is_deceased} size="sm" />
+                        <p className={`font-display text-sm font-semibold ${line.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>
+                          {lineName}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* ── FOCUS / RECENTER DRILL-DOWN ───────────────────────────── */}
+      {selectedLineId && (
+        <div className="mx-auto max-w-lg md:max-w-xl px-4 pt-4">
+          {/* Loading */}
+          {treeLoading && (
+            <div className="space-y-4 py-8">
+              <div className="mx-auto h-[88px] w-[88px] animate-pulse rounded-full bg-[var(--cream-panel)]" />
+              <div className="mx-auto h-5 w-2/3 animate-pulse rounded bg-[var(--cream-panel)]" />
+              <div className="mx-auto h-4 w-1/3 animate-pulse rounded bg-[var(--cream-panel)]" />
+            </div>
+          )}
+
+          {!treeLoading && focusPerson && (
+            <>
+              {/* ── Breadcrumb ───────────────────────────────────── */}
+              {breadcrumb.length > 1 && (
+                <nav className="mb-4 flex items-center gap-1 overflow-x-auto text-[12px]">
+                  {breadcrumb.map((crumb, i) => {
+                    const crumbName = bi(crumb.full_name, crumb.full_name_en, lang);
+                    const isLast = i === breadcrumb.length - 1;
+
+                    // On mobile, collapse middle crumbs if > 3
+                    if (breadcrumb.length > 3 && i > 0 && i < breadcrumb.length - 2) {
+                      if (i === 1) {
+                        return (
+                          <span key="ellipsis" className="flex items-center gap-1">
+                            <span className="text-[var(--muted)]">…</span>
+                            <span className="text-[var(--gold)] opacity-50">›</span>
+                          </span>
+                        );
+                      }
+                      return null;
+                    }
+
+                    return (
+                      <span key={crumb.member_id} className="flex shrink-0 items-center gap-1">
+                        {i > 0 && <span className="text-[var(--gold)] opacity-50">›</span>}
+                        {isLast ? (
+                          <span className="font-semibold text-[var(--maroon-deep)]">
+                            {crumbName}
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => recenter(crumb.member_id)}
+                            className="font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]"
+                          >
+                            {crumbName}
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </nav>
+              )}
+
+              {/* ── Focus person card ────────────────────────────── */}
+              <FadeIn key={focusPerson.member_id}>
+                <div className="flex flex-col items-center rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-6 shadow-card">
+                  <InitialsAvatar
+                    name={focusPerson.full_name}
+                    nameEn={focusPerson.full_name_en}
+                    photoUrl={focusPerson.photo_url}
+                    deceased={focusPerson.is_deceased}
+                    size="lg"
+                  />
+                  <h2 className={`mt-3 text-center font-display text-xl font-semibold ${focusPerson.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>
+                    {bi(focusPerson.full_name, focusPerson.full_name_en, lang)}
+                  </h2>
+                  {focusPerson.is_deceased && (
+                    <span className="mt-1 text-[11px] font-medium uppercase tracking-wider text-[var(--gold-deep)]">
+                      In remembrance
+                    </span>
+                  )}
+                  <Link
+                    href={`/family/${focusPerson.member_id}`}
+                    className="mt-3 flex items-center gap-1 text-sm font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]"
+                  >
+                    {lang === "en" ? "View full profile" : "पूरा प्रोफ़ाइल देखें"} →
+                  </Link>
+                </div>
+              </FadeIn>
+
+              {/* ── Children section ──────────────────────────────── */}
+              <div className="mt-6">
+                {focusChildren.length > 0 ? (
+                  <>
+                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                      {lang === "en" ? "Children" : "संतान"} ({focusChildren.length})
+                    </h3>
+
+                    {/* Gold vertical thread */}
+                    <div className="relative">
+                      <div
+                        className="absolute left-[19px] top-0 bottom-0 w-[2px] opacity-40"
+                        style={{ background: "linear-gradient(to bottom, var(--gold) 0%, var(--gold) 90%, transparent)" }}
+                      />
+
+                      <div className="space-y-0">
+                        {focusChildren.map((child, i) => {
+                          const childName = bi(child.full_name, child.full_name_en, lang);
+                          const grandchildCount = (childrenOf.get(child.member_id) || []).length;
+                          const hasMore = grandchildCount > 0;
+
+                          return (
+                            <FadeIn key={child.member_id} delay={Math.min(i * 0.04, 0.2)}>
+                              <button
+                                onClick={() => handleChildTap(child)}
+                                className="relative flex w-full items-center gap-3 rounded-[var(--r)] px-1 py-3 text-left motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
+                              >
+                                {/* Horizontal connector */}
+                                <div className="absolute left-[19px] top-1/2 h-[2px] w-3 -translate-y-1/2 bg-[var(--gold)] opacity-40" />
+
+                                <div className="relative z-[1] ml-[28px]">
+                                  <InitialsAvatar
+                                    name={child.full_name}
+                                    nameEn={child.full_name_en}
+                                    photoUrl={child.photo_url}
+                                    deceased={child.is_deceased}
+                                    size="sm"
+                                  />
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <p className={`font-display text-[15px] font-semibold ${child.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>
+                                    {childName}
+                                  </p>
+                                  {hasMore && (
+                                    <span className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-[var(--gold-deep)]">
+                                      {grandchildCount} {t("tree_children_count", lang)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Chevron for drill-down, arrow for leaf → card */}
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  className="h-4 w-4 shrink-0 text-[var(--gold)] opacity-60"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            </FadeIn>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-[var(--r)] border border-[var(--hairline)] bg-[var(--raised)] px-4 py-6 text-center">
+                    <p className="text-sm text-[var(--muted)]">
+                      {lang === "en" ? "No recorded children" : "कोई दर्ज संतान नहीं"}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <BottomNav />
     </div>
