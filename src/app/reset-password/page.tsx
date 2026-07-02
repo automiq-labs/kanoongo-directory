@@ -13,89 +13,75 @@ export default function ResetPasswordPage() {
   const { lang } = useLang();
   const supabase = useMemo(() => createClient(), []);
 
-  // Detect if we arrived via a recovery link (Supabase sets a session with type=recovery)
-  const [mode, setMode] = useState<"request" | "set">("request");
+  const [step, setStep] = useState<"request" | "verify" | "success">("request");
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
-  const [linkExpired, setLinkExpired] = useState(false);
+  const [legacyNotice, setLegacyNotice] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
 
+  // Detect legacy recovery links and clean URL
   useEffect(() => {
-    // Check URL for recovery error indicators (hash or query params)
-    const hash = window.location.hash;
-    const search = window.location.search;
-    const combined = hash + search;
-    const hasRecoveryError =
+    const combined = window.location.hash + window.location.search;
+    if (
+      combined.includes("type=recovery") ||
       combined.includes("error_code=otp_expired") ||
-      combined.includes("error=access_denied") ||
-      combined.includes("expired") ||
-      combined.includes("invalid");
-    const hasRecoveryIntent = combined.includes("type=recovery") || hasRecoveryError;
-
-    if (hasRecoveryError) {
-      setLinkExpired(true);
-      // Clean error params from URL
+      combined.includes("error=access_denied")
+    ) {
       window.history.replaceState({}, "", window.location.pathname);
+      setLegacyNotice(true);
     }
+  }, []);
 
-    // Listen for the PASSWORD_RECOVERY event that fires when user clicks the reset link
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setLinkExpired(false);
-        setMode("set");
-      }
-    });
+  // Cooldown timer for resend
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
-    // Fallback: if we had recovery intent but no event fires after 3s, show expired
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-    if (hasRecoveryIntent && !hasRecoveryError) {
-      fallbackTimer = setTimeout(() => {
-        // Only show if still in request mode (event didn't fire)
-        setLinkExpired((prev) => {
-          // Don't overwrite if mode already changed
-          return prev;
-        });
-        // Check mode via a ref-like approach — if we're here and no PASSWORD_RECOVERY fired, show notice
-        setMode((currentMode) => {
-          if (currentMode === "request") setLinkExpired(true);
-          return currentMode;
-        });
-      }, 3000);
-      // Clean params regardless
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-
-    return () => {
-      subscription.unsubscribe();
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-    };
-  }, [supabase]);
-
-  async function handleSendReset(e: React.FormEvent) {
+  async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
 
     if (error) {
       setError(error.message);
     } else {
-      setSent(true);
+      setStep("verify");
+      setCooldown(30);
     }
     setLoading(false);
   }
 
-  async function handleSetPassword(e: React.FormEvent) {
+  async function handleResend() {
+    if (cooldown > 0) return;
+    setError("");
+    setLoading(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+
+    if (error) {
+      setError(error.message);
+    } else {
+      setCooldown(30);
+    }
+    setLoading(false);
+  }
+
+  async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
+    if (!/^\d{6}$/.test(code.trim())) {
+      setError(t("reset_code_invalid", lang));
+      return;
+    }
     if (newPassword.length < 6) {
       setError(t("reg_password_short", lang));
       return;
@@ -106,13 +92,27 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-    if (error) {
-      console.error("Password reset failed:", error);
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code.trim(),
+      type: "recovery",
+    });
+
+    if (verifyError) {
+      setError(t("reset_code_invalid", lang));
+      setLoading(false);
+      return;
+    }
+
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
       setError(t("reset_error", lang));
     } else {
-      setSuccess(true);
+      setStep("success");
     }
     setLoading(false);
   }
@@ -140,17 +140,17 @@ export default function ResetPasswordPage() {
             </h1>
           </div>
 
-          {/* Expired link notice */}
-          {linkExpired && mode === "request" && (
+          {/* Legacy link notice */}
+          {legacyNotice && step === "request" && (
             <div className="mb-4 rounded-[var(--r-sm)] px-4 py-3 text-sm font-medium text-[var(--maroon-deep)]" style={{ background: "rgba(110,30,42,0.06)" }}>
-              {t("reset_link_expired", lang)}
+              {t("reset_use_code", lang)}
             </div>
           )}
 
-          {/* MODE: Request reset link */}
-          {mode === "request" && !sent && (
+          {/* Step: Request code */}
+          {step === "request" && (
             <form
-              onSubmit={handleSendReset}
+              onSubmit={handleSendCode}
               className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]"
             >
               <p className="mb-5 text-sm text-[var(--muted)]">
@@ -174,33 +174,32 @@ export default function ResetPasswordPage() {
             </form>
           )}
 
-          {/* MODE: Reset link sent */}
-          {mode === "request" && sent && (
-            <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 text-center shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-2xl">
-                ✉️
-              </div>
-              <p className="text-sm leading-relaxed text-[var(--maroon-deep)]">
-                {t("reset_sent", lang)}
-              </p>
-              <Link
-                href="/login"
-                className="mt-5 inline-block rounded-lg bg-[var(--maroon)] px-6 py-3 font-medium text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)]"
-              >
-                {t("login_button", lang)}
-              </Link>
-            </div>
-          )}
-
-          {/* MODE: Set new password (arrived via recovery link) */}
-          {mode === "set" && !success && (
+          {/* Step: Verify code & set password */}
+          {step === "verify" && (
             <form
-              onSubmit={handleSetPassword}
+              onSubmit={handleVerify}
               className="rounded-xl border border-[var(--border-card)] bg-white p-6 shadow-[0_1px_3px_rgba(110,30,42,0.06)]"
             >
               <p className="mb-5 text-sm text-[var(--muted)]">
-                {t("reset_new_password", lang)}
+                {t("reset_sent", lang)} <span className="font-medium text-[var(--maroon-deep)]">{email}</span>
               </p>
+              <div className="mb-4">
+                <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">
+                  {t("reset_code_label", lang)}
+                </label>
+                <input
+                  type="text"
+                  required
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => { setCode(e.target.value.replace(/\D/g, "")); setError(""); }}
+                  className={`${inputClass} text-center tracking-[0.3em]`}
+                  placeholder="000000"
+                  autoFocus
+                />
+              </div>
               <div className="mb-4">
                 <label className="mb-1 block text-sm font-medium text-[var(--gold-deep)]">
                   {t("password", lang)}
@@ -212,7 +211,6 @@ export default function ResetPasswordPage() {
                   onChange={(e) => { setNewPassword(e.target.value); setError(""); }}
                   className={inputClass}
                   placeholder="••••••••"
-                  autoFocus
                 />
               </div>
               <div className="mb-5">
@@ -232,13 +230,27 @@ export default function ResetPasswordPage() {
                 <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</p>
               )}
               <button type="submit" disabled={loading} className={primaryBtn}>
-                {loading ? t("reset_setting", lang) : t("reset_set", lang)}
+                {loading ? t("reset_setting", lang) : t("reset_verify", lang)}
               </button>
+              <p className="mt-4 text-center text-sm text-[var(--muted)]">
+                {cooldown > 0 ? (
+                  <span>{t("reset_resend_wait", lang)} {cooldown}s</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={loading}
+                    className="font-medium text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)] disabled:opacity-50"
+                  >
+                    {t("reset_resend", lang)}
+                  </button>
+                )}
+              </p>
             </form>
           )}
 
-          {/* MODE: Success */}
-          {mode === "set" && success && (
+          {/* Step: Success */}
+          {step === "success" && (
             <div className="rounded-xl border border-[var(--border-card)] bg-white p-6 text-center shadow-[0_1px_3px_rgba(110,30,42,0.06)]">
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-50 text-2xl">
                 ✓
@@ -247,10 +259,10 @@ export default function ResetPasswordPage() {
                 {t("reset_success", lang)}
               </p>
               <Link
-                href="/login"
+                href="/"
                 className="mt-5 inline-block rounded-lg bg-[var(--maroon)] px-6 py-3 font-medium text-[var(--ivory)] transition-colors hover:bg-[var(--maroon-deep)]"
               >
-                {t("login_button", lang)}
+                {t("reset_go_home", lang)}
               </Link>
             </div>
           )}
