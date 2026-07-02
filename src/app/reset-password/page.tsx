@@ -78,7 +78,7 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError("");
 
-    if (!/^\d{6}$/.test(code.trim())) {
+    if (!/^\d{4,10}$/.test(code.trim())) {
       setError(t("reset_code_invalid", lang));
       return;
     }
@@ -192,7 +192,7 @@ export default function ResetPasswordPage() {
                   required
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  maxLength={6}
+                  maxLength={10}
                   value={code}
                   onChange={(e) => { setCode(e.target.value.replace(/\D/g, "")); setError(""); }}
                   className={`${inputClass} text-center tracking-[0.3em]`}
