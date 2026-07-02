@@ -44,7 +44,11 @@ export default function OnboardingTour({
 
   // Record view exactly once when the tour opens
   useEffect(() => {
-    supabase.rpc("record_onboarding_view");
+    supabase
+      .rpc("record_onboarding_view")
+      .then(({ error }) => {
+        if (error) console.error("record_onboarding_view failed:", error);
+      });
   }, [supabase]);
 
   // Dismiss on Escape
