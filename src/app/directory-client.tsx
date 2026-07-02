@@ -14,6 +14,9 @@ import { Crest } from "@/components/Crest";
 import { resolveMyMember } from "@/lib/resolve-my-member";
 import { StaggerList, StaggerItem } from "@/components/Motion";
 import CelebrationsStrip from "@/components/CelebrationsStrip";
+import WelcomeCard from "@/components/WelcomeCard";
+import OnboardingTour from "@/components/OnboardingTour";
+import type { OnboardingState } from "@/lib/onboarding";
 
 type DirectoryMember = Pick<
   Member,
@@ -41,6 +44,8 @@ export default function DirectoryClient({
 
   const supabaseCl = useMemo(() => createClient(), []);
   const [userAvatar, setUserAvatar] = useState<{ photoUrl: string | null; initial: string }>({ photoUrl: null, initial: "?" });
+  const [onbState, setOnbState] = useState<OnboardingState | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +63,21 @@ export default function DirectoryClient({
     loadAvatar();
     return () => { cancelled = true; };
   }, [supabaseCl, lang]);
+
+  // Onboarding: single fetch shared by WelcomeCard + OnboardingTour
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOnboarding() {
+      const { data, error } = await supabaseCl.rpc("get_onboarding_state");
+      if (cancelled || error || !data) return;
+      const s = data as OnboardingState;
+      if (!s.found) return;
+      setOnbState(s);
+      if (s.show_tour) setTourOpen(true);
+    }
+    loadOnboarding();
+    return () => { cancelled = true; };
+  }, [supabaseCl]);
 
   const cities = useMemo(() => {
     const set = new Set<string>();
@@ -139,6 +159,9 @@ export default function DirectoryClient({
       </header>
 
       <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
+        {/* Welcome card */}
+        {onbState && <WelcomeCard state={onbState} />}
+
         {/* Celebrations */}
         <CelebrationsStrip />
 
@@ -334,6 +357,10 @@ export default function DirectoryClient({
       </div>
 
       <BottomNav />
+
+      {tourOpen && onbState && (
+        <OnboardingTour state={onbState} onClose={() => setTourOpen(false)} />
+      )}
     </div>
   );
 }
