@@ -52,11 +52,11 @@ export default function OnboardingTour({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center motion-safe:animate-[fadeIn_200ms_ease-out]"
-      style={{ background: "rgba(0,0,0,0.5)" }}
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center motion-safe:animate-[fadeIn_200ms_ease-out]"
+      style={{ background: "rgba(30,8,12,0.55)" }}
     >
       <div
-        className="w-full max-w-lg rounded-t-2xl bg-[var(--raised)] px-5 pt-5 shadow-xl motion-safe:animate-[slideUp_250ms_ease-out]"
+        className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl sm:mx-4 bg-[var(--raised)] px-5 pt-5 shadow-xl motion-safe:animate-[slideUp_250ms_ease-out] sm:animate-none"
         style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))" }}
       >
         {/* Later button */}

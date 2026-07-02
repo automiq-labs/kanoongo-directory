@@ -1,7 +1,6 @@
 "use client";
 
 import { useLang } from "@/lib/language-context";
-import { useEffect } from "react";
 
 export default function LanguageToggle({
   variant = "header",
@@ -9,10 +8,6 @@ export default function LanguageToggle({
   variant?: "header" | "page";
 }) {
   const { lang, toggleLang } = useLang();
-
-  useEffect(() => {
-    document.body.classList.toggle("lang-en", lang === "en");
-  }, [lang]);
 
   const cls =
     variant === "page"
