@@ -221,6 +221,14 @@ export default function AdminClient() {
     }
   }
 
+  /** Escape a value for CSV: quote-wrap, double internal quotes, neutralize formula injection */
+  function csvSafe(val: string | null | undefined): string {
+    let s = val || "";
+    // Neutralize Excel formula injection: prefix a single-quote if first char is a trigger
+    if (s && /^[=+\-@]/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+
   async function handleExportCSV() {
     setExporting(true);
     const { data, error } = await supabase.rpc("admin_list_members", {
@@ -229,19 +237,24 @@ export default function AdminClient() {
       p_limit: 10000,
       p_offset: 0,
     });
-    if (!error && data) {
+    if (error) {
+      setExporting(false);
+      window.alert(lang === "en" ? "Export failed — please try again" : "निर्यात विफल — कृपया पुनः प्रयास करें");
+      return;
+    }
+    if (data) {
       const d = data as { total: number; rows: MemberRow[] };
       const header = "member_id,name_hindi,name_english,city,mobile_1,mobile_2,claimed,claim_email,profile_complete,last_sign_in";
       const csvRows = d.rows.map((r) =>
         [
-          r.member_id,
-          `"${(r.full_name || "").replace(/"/g, '""')}"`,
-          `"${(r.full_name_en || "").replace(/"/g, '""')}"`,
-          `"${(r.city || "").replace(/"/g, '""')}"`,
-          r.mobile_1 || "",
-          r.mobile_2 || "",
+          csvSafe(r.member_id),
+          csvSafe(r.full_name),
+          csvSafe(r.full_name_en),
+          csvSafe(r.city),
+          csvSafe(r.mobile_1),
+          csvSafe(r.mobile_2),
           r.claimed ? "yes" : "no",
-          r.claim_email || "",
+          csvSafe(r.claim_email),
           r.profile_complete ? "yes" : "no",
           r.last_sign_in_at || "",
         ].join(",")

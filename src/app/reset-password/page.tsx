@@ -20,21 +20,19 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [legacyNotice, setLegacyNotice] = useState(false);
+  const [legacyNotice] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const combined = window.location.hash + window.location.search;
+    return combined.includes("type=recovery") || combined.includes("error_code=otp_expired") || combined.includes("error=access_denied");
+  });
   const [cooldown, setCooldown] = useState(0);
 
-  // Detect legacy recovery links and clean URL
+  // Clean legacy recovery link URL on mount
   useEffect(() => {
-    const combined = window.location.hash + window.location.search;
-    if (
-      combined.includes("type=recovery") ||
-      combined.includes("error_code=otp_expired") ||
-      combined.includes("error=access_denied")
-    ) {
+    if (legacyNotice) {
       window.history.replaceState({}, "", window.location.pathname);
-      setLegacyNotice(true);
     }
-  }, []);
+  }, [legacyNotice]);
 
   // Cooldown timer for resend
   useEffect(() => {

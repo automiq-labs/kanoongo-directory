@@ -102,11 +102,8 @@ export const HI_DICTIONARY: Record<string, string> = {
   // Marital / family
   married: "विवाहित",
   unmarried: "अविवाहित",
-  widowed: "विधवा",
   divorced: "तलाकशुदा",
   // General
-  male: "पुरुष",
-  female: "महिला",
   none: "कोई नहीं",
   nil: "शून्य",
   na: "लागू नहीं",
@@ -172,15 +169,16 @@ export async function transliterateWord(word: string): Promise<string | null> {
     );
     clearTimeout(timer);
     if (!res.ok) {
-      cache.set(key, null);
+      // Server error — do NOT cache (transient), allow retry next call
       return null;
     }
     const json = (await res.json()) as { result?: string[] };
     const result = json.result?.[0] ?? null;
+    // Only cache when the API actually responded — null here means "no suggestion"
     cache.set(key, result);
     return result;
   } catch {
-    cache.set(key, null);
+    // Network/timeout error — do NOT cache (transient), allow retry next call
     return null;
   }
 }
@@ -228,15 +226,18 @@ export function useAutoHindi(
   const lastAutoRef = useRef<string>("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef(false);
+  const seqRef = useRef(0); // monotonically increasing sequence for race prevention
 
   const doFill = useCallback(
     async (enVal: string) => {
       const trimmed = enVal.trim();
       if (!trimmed) return;
+      const mySeq = ++seqRef.current;
       setFilling?.(true);
       abortRef.current = false;
       const result = await transliteratePhrase(trimmed);
-      if (abortRef.current) { setFilling?.(false); return; }
+      // Only apply if this is still the latest request and component is alive
+      if (abortRef.current || mySeq !== seqRef.current) { setFilling?.(false); return; }
       if (result) {
         lastAutoRef.current = result;
         setHindi(result);

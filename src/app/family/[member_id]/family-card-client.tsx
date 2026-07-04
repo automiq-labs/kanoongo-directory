@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Member, Spouse, Child } from "@/lib/types";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang } from "@/lib/translations";
@@ -274,7 +274,6 @@ interface ChildEdits {
 }
 
 function memberToEdits(m: Member): MemberEdits {
-  const mRec = m as unknown as Record<string, string | null>;
   return {
     full_name: m.full_name || "",
     full_name_en: m.full_name_en || "",
@@ -298,10 +297,10 @@ function memberToEdits(m: Member): MemberEdits {
     husband_name: m.husband_name || "",
     husband_name_en: m.husband_name_en || "",
     marital_status: m.marital_status || "",
-    country: mRec.country || "",
-    country_en: mRec.country_en || "",
-    state: mRec.state || "",
-    state_en: mRec.state_en || "",
+    country: m.country || "",
+    country_en: m.country_en || "",
+    state: m.state || "",
+    state_en: m.state_en || "",
     notes: m.notes || "",
     notes_en: m.notes_en || "",
   };
@@ -350,16 +349,6 @@ function langKeys(
     return { activeKey: `${baseField}_en`, otherKey: baseField };
   }
   return { activeKey: baseField, otherKey: `${baseField}_en` };
-}
-
-/** Get edit value for active language */
-function getEditVal(
-  edits: Record<string, string>,
-  baseField: string,
-  lang: Lang
-): string {
-  const { activeKey } = langKeys(baseField, lang);
-  return edits[activeKey] ?? "";
 }
 
 /** Set edit value for active language, auto-fill other if empty.
@@ -433,14 +422,15 @@ export default function FamilyCardClient({
 }) {
   const { lang } = useLang();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   // Edit blocking: if the member's own record has edit_blocked, suppress all editing UX
   const editBlocked = Boolean(m.edit_blocked) && canEdit;
   const canEditEffective = canEdit && !m.edit_blocked;
 
-  // Edit state
-  const [editing, setEditing] = useState(false);
+  // Edit state — auto-open when ?edit=1 is in the URL
+  const [editing, setEditing] = useState(() =>
+    canEditEffective && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("edit") === "1"
+  );
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
@@ -539,13 +529,6 @@ export default function FamilyCardClient({
     setShowUnmarriedPrompt(false);
     setEditing(true);
   }
-
-  // Auto-open edit mode when ?edit=1 is present
-  useEffect(() => {
-    if (searchParams.get("edit") === "1" && canEditEffective && !editing) {
-      startEditing();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
   function cancelEditing() {
     setEditing(false);

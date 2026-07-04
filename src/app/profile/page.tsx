@@ -7,10 +7,8 @@ import { useLang } from "@/lib/language-context";
 import { t } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
 import { Crest } from "@/components/Crest";
-import { MakerMark } from "@/components/MakerMark";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import { resolveMyMember } from "@/lib/resolve-my-member";
-import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
 import InitialsAvatar from "@/components/form/InitialsAvatar";
 

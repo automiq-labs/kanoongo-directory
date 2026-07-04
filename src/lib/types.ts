@@ -36,6 +36,11 @@ export interface Member {
   husband_name: string | null;
   husband_name_en: string | null;
   origin: string | null;
+  state: string | null;
+  state_en: string | null;
+  country: string | null;
+  country_en: string | null;
+  sort_seq: number | null;
   review_flags: string | null;
   photo_url: string | null;
   notes: string | null;
