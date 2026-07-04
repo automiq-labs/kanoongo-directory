@@ -8,6 +8,7 @@ import { useLang } from "@/lib/language-context";
 import { t, type Lang } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
 import { createClient } from "@/lib/supabase/client";
+import { useAutoHindi, sweepAutoHindi, transliteratePhrase } from "@/lib/transliterate";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
@@ -158,6 +159,57 @@ function EditRow({
   );
 }
 
+/**
+ * Wraps EditRow for bilingual fields: when lang=en, silently auto-fills the
+ * Hindi counterpart via transliteration (debounced, non-blocking).
+ * Shows a subtle shimmer in the Hindi field while filling.
+ */
+function AutoHindiEditRow({
+  label,
+  lang,
+  englishValue,
+  hindiValue,
+  onChangeActive,
+  setHindi,
+}: {
+  label: string;
+  lang: Lang;
+  englishValue: string;
+  hindiValue: string;
+  onChangeActive: (v: string) => void;
+  setHindi: (v: string) => void;
+}) {
+  const [filling, setFilling] = useState(false);
+
+  // Only activate hook when lang=en (typing English, auto-fill Hindi)
+  const { onBlurEnglish } = useAutoHindi(
+    lang === "en" ? englishValue : "",
+    hindiValue,
+    setHindi,
+    setFilling,
+  );
+
+  const activeValue = lang === "en" ? englishValue : hindiValue;
+
+  return (
+    <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{label}</label>
+      <div className="relative">
+        <input
+          type="text"
+          value={activeValue}
+          onChange={(e) => onChangeActive(e.target.value)}
+          onBlur={lang === "en" ? onBlurEnglish : undefined}
+          className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+        />
+        {filling && (
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--gold)] animate-pulse">···</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Edit state types ────────────────────────────────────────────────────────
 
 interface MemberEdits {
@@ -187,6 +239,8 @@ interface MemberEdits {
   country_en: string;
   state: string;
   state_en: string;
+  notes: string;
+  notes_en: string;
 }
 
 interface SpouseEdits {
@@ -203,6 +257,8 @@ interface SpouseEdits {
   date_of_marriage: string;
   mobile: string;
   email: string;
+  notes: string;
+  notes_en: string;
 }
 
 interface ChildEdits {
@@ -213,6 +269,8 @@ interface ChildEdits {
   dob: string;
   education: string;
   education_en: string;
+  notes: string;
+  notes_en: string;
 }
 
 function memberToEdits(m: Member): MemberEdits {
@@ -244,6 +302,8 @@ function memberToEdits(m: Member): MemberEdits {
     country_en: mRec.country_en || "",
     state: mRec.state || "",
     state_en: mRec.state_en || "",
+    notes: m.notes || "",
+    notes_en: m.notes_en || "",
   };
 }
 
@@ -262,6 +322,8 @@ function spouseToEdits(s: Spouse): SpouseEdits {
     date_of_marriage: s.date_of_marriage || "",
     mobile: s.mobile || "",
     email: s.email || "",
+    notes: s.notes || "",
+    notes_en: s.notes_en || "",
   };
 }
 
@@ -274,6 +336,8 @@ function childToEdits(c: Child): ChildEdits {
     dob: c.dob || "",
     education: c.education || "",
     education_en: c.education_en || "",
+    notes: c.notes || "",
+    notes_en: c.notes_en || "",
   };
 }
 
@@ -298,7 +362,9 @@ function getEditVal(
   return edits[activeKey] ?? "";
 }
 
-/** Set edit value for active language, auto-fill other if empty */
+/** Set edit value for active language, auto-fill other if empty.
+ *  When lang=en, we skip the Hindi auto-copy — useAutoHindi handles transliteration.
+ *  When lang=hi, we still copy verbatim to the _en field if it's empty. */
 function setEditVal(
   edits: Record<string, string>,
   baseField: string,
@@ -307,8 +373,9 @@ function setEditVal(
 ): Record<string, string> {
   const { activeKey, otherKey } = langKeys(baseField, lang);
   const updated = { ...edits, [activeKey]: value };
-  // Auto-fill other language only if it's currently empty
-  if (!edits[otherKey]) {
+  // When user types in Hindi (lang=hi), copy to English if empty
+  // When user types in English (lang=en), do NOT copy to Hindi — transliteration hook handles it
+  if (lang === "hi" && !edits[otherKey]) {
     updated[otherKey] = value;
   }
   return updated;
@@ -367,6 +434,10 @@ export default function FamilyCardClient({
   const { lang } = useLang();
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  // Edit blocking: if the member's own record has edit_blocked, suppress all editing UX
+  const editBlocked = Boolean(m.edit_blocked) && canEdit;
+  const canEditEffective = canEdit && !m.edit_blocked;
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -471,10 +542,10 @@ export default function FamilyCardClient({
 
   // Auto-open edit mode when ?edit=1 is present
   useEffect(() => {
-    if (searchParams.get("edit") === "1" && canEdit && !editing) {
+    if (searchParams.get("edit") === "1" && canEditEffective && !editing) {
       startEditing();
     }
-  }, []); // only on mount
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- intentionally mount-only
 
   function cancelEditing() {
     setEditing(false);
@@ -519,14 +590,25 @@ export default function FamilyCardClient({
     setAddChildLoading(true);
     try {
       const supabase = createClient();
-      const payload = filledRows.map((r) => ({
-        full_name: r.fullName.trim(),
-        full_name_en: r.fullName.trim(),
-        gender: r.gender.trim() || null,
-        dob: r.dob || null,
-        education: r.education.trim() || null,
-        education_en: r.education.trim() || null,
-      }));
+      // Transliterate names and education to Hindi (non-blocking)
+      const payload = await Promise.all(
+        filledRows.map(async (r) => {
+          const nameEn = r.fullName.trim();
+          const eduEn = r.education.trim() || null;
+          const [nameHi, eduHi] = await Promise.all([
+            nameEn ? transliteratePhrase(nameEn) : null,
+            eduEn ? transliteratePhrase(eduEn) : null,
+          ]);
+          return {
+            full_name: nameHi || nameEn,
+            full_name_en: nameEn,
+            gender: r.gender.trim() || null,
+            dob: r.dob || null,
+            education: eduHi || eduEn,
+            education_en: eduEn,
+          };
+        }),
+      );
 
       const { error } = await supabase.rpc("add_children_bulk", {
         p_parent_member_id: m.member_id,
@@ -588,16 +670,22 @@ export default function FamilyCardClient({
     try {
       const supabase = createClient();
       const nameVal = wifeForm.fullName.trim();
+      // Transliterate English values to Hindi (non-blocking: null = skip)
+      const [nameHi, fatherHi, eduHi] = await Promise.all([
+        nameVal ? transliteratePhrase(nameVal) : null,
+        wifeForm.fatherName.trim() ? transliteratePhrase(wifeForm.fatherName.trim()) : null,
+        wifeForm.education.trim() ? transliteratePhrase(wifeForm.education.trim()) : null,
+      ]);
       const { error } = await supabase.rpc("add_spouse", {
         p_member_id: m.member_id,
-        p_full_name: nameVal || "",
+        p_full_name: nameHi || nameVal || "",
         p_full_name_en: nameVal || null,
         p_gender: "F",
-        p_father_name: wifeForm.fatherName.trim() || null,
+        p_father_name: fatherHi || wifeForm.fatherName.trim() || null,
         p_father_name_en: wifeForm.fatherName.trim() || null,
         p_birth_gotra: wifeForm.birthGotra.trim() || null,
         p_birth_gotra_en: wifeForm.birthGotraEn.trim() || wifeForm.birthGotra.trim() || null,
-        p_education: wifeForm.education.trim() || null,
+        p_education: eduHi || wifeForm.education.trim() || null,
         p_education_en: wifeForm.education.trim() || null,
         p_dob: wifeForm.dob || null,
       });
@@ -627,10 +715,12 @@ export default function FamilyCardClient({
     setPromoteLoading(true);
     try {
       const supabase = createClient();
+      const hNameEn = isDaughter ? (promoteHusbandName.trim() || null) : null;
+      const hNameHi = hNameEn ? (await transliteratePhrase(hNameEn)) : null;
       const { error } = await supabase.rpc("promote_child_to_member", {
         p_child_id: childId,
-        p_husband_name: isDaughter ? (promoteHusbandName.trim() || null) : null,
-        p_husband_name_en: isDaughter ? (promoteHusbandName.trim() || null) : null,
+        p_husband_name: hNameHi || hNameEn,
+        p_husband_name_en: hNameEn,
       });
 
       if (error) {
@@ -757,6 +847,35 @@ export default function FamilyCardClient({
     setToast(null);
 
     try {
+      // 0. Pre-save sweep: transliterate any empty Hindi fields (non-blocking)
+      const memberPairs: [string, string][] = [
+        ["full_name", "full_name_en"], ["education", "education_en"], ["occupation", "occupation_en"],
+        ["addr_line1", "addr_line1_en"], ["addr_line2", "addr_line2_en"], ["city", "city_en"],
+        ["state", "state_en"], ["country", "country_en"], ["gotra", "gotra_en"], ["husband_name", "husband_name_en"], ["notes", "notes_en"],
+      ];
+      const sweptMember = await sweepAutoHindi(memberEdits as unknown as Record<string, string>, memberPairs);
+      setMemberEdits(sweptMember as unknown as MemberEdits);
+
+      const spousePairs: [string, string][] = [
+        ["full_name", "full_name_en"], ["father_name", "father_name_en"],
+        ["birth_gotra", "birth_gotra_en"], ["education", "education_en"], ["notes", "notes_en"],
+      ];
+      const sweptSpouses = await Promise.all(
+        spouseEdits.map((se) => sweepAutoHindi(se as unknown as Record<string, string>, spousePairs)),
+      );
+      setSpouseEdits(sweptSpouses as unknown as SpouseEdits[]);
+
+      const childPairs: [string, string][] = [["full_name", "full_name_en"], ["education", "education_en"], ["notes", "notes_en"]];
+      const sweptChildren = await Promise.all(
+        childEdits.map((ce) => sweepAutoHindi(ce as unknown as Record<string, string>, childPairs)),
+      );
+      setChildEdits(sweptChildren as unknown as ChildEdits[]);
+
+      // Use swept values for the rest of save
+      const memberEditsLocal = sweptMember as unknown as MemberEdits;
+      const spouseEditsLocal = sweptSpouses as unknown as SpouseEdits[];
+      const childEditsLocal = sweptChildren as unknown as ChildEdits[];
+
       const supabase = createClient();
       const familyId = userFamilyId!;
 
@@ -801,9 +920,9 @@ export default function FamilyCardClient({
 
       // --- Member ---
       const memberPayload = buildBilingualPayload(
-        memberEdits as unknown as Record<string, string>,
+        memberEditsLocal as unknown as Record<string, string>,
         m as unknown as Record<string, string | null>,
-        ["full_name", "education", "occupation", "addr_line1", "addr_line2", "city", "country", "state", "gotra", "husband_name"],
+        ["full_name", "education", "occupation", "addr_line1", "addr_line2", "city", "country", "state", "gotra", "husband_name", "notes"],
         ["dob", "mobile_1", "mobile_2", "email", "pincode", "marital_status"]
       );
       if (memberPhotoUrl !== m.photo_url) {
@@ -831,11 +950,11 @@ export default function FamilyCardClient({
       // --- Spouses ---
       for (let i = 0; i < spouses.length; i++) {
         const s = spouses[i];
-        const edits = spouseEdits[i];
+        const edits = spouseEditsLocal[i];
         const payload = buildBilingualPayload(
           edits as unknown as Record<string, string>,
           s as unknown as Record<string, string | null>,
-          ["full_name", "birth_gotra", "father_name", "education"],
+          ["full_name", "birth_gotra", "father_name", "education", "notes"],
           ["dob", "date_of_marriage", "mobile", "email"]
         );
         if (spousePhotoUrls[s.spouse_id] !== undefined) {
@@ -862,11 +981,11 @@ export default function FamilyCardClient({
       // --- Children ---
       for (let i = 0; i < childrenData.length; i++) {
         const c = childrenData[i];
-        const edits = childEdits[i];
+        const edits = childEditsLocal[i];
         const payload = buildBilingualPayload(
           edits as unknown as Record<string, string>,
           c as unknown as Record<string, string | null>,
-          ["full_name", "education"],
+          ["full_name", "education", "notes"],
           ["gender", "dob"]
         );
         if (childPhotoUrls[c.child_id] !== undefined) {
@@ -892,7 +1011,7 @@ export default function FamilyCardClient({
 
       // Check for married → unmarried transition
       const wasMarried = m.marital_status === "married";
-      const nowUnmarried = memberEdits.marital_status !== "married" && memberEdits.marital_status !== "";
+      const nowUnmarried = memberEditsLocal.marital_status !== "married" && memberEditsLocal.marital_status !== "";
       if (wasMarried && nowUnmarried && (spouses.length > 0 || childrenData.length > 0)) {
         setShowUnmarriedPrompt(true);
       }
@@ -903,7 +1022,12 @@ export default function FamilyCardClient({
       router.refresh(); // re-fetch server data
     } catch (err: unknown) {
       console.error("Save error:", err);
-      setToast({ type: "error", msg: t("save_error", lang) });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      // Detect edit-blocked race condition (RLS rejection / zero rows)
+      const isBlocked = errMsg.includes("edit_blocked") || errMsg.includes("new row violates") || errMsg.includes("0 rows");
+      const isNotesTooLong = errMsg.includes("notes") && (errMsg.includes("constraint") || errMsg.includes("1000") || errMsg.includes("too long"));
+      const msg = isBlocked ? t("edit_blocked_banner", lang) : isNotesTooLong ? t("notes_too_long", lang) : t("save_error", lang);
+      setToast({ type: "error", msg });
     } finally {
       setSaving(false);
     }
@@ -915,6 +1039,7 @@ export default function FamilyCardClient({
   const gotra = bi(m.gotra, m.gotra_en, lang);
   const education = bi(m.education, m.education_en, lang);
   const occupation = bi(m.occupation, m.occupation_en, lang);
+  const memberNotes = bi(m.notes, m.notes_en, lang);
   const mRec = m as unknown as Record<string, string | null>;
   const city = bi(m.city, m.city_en, lang);
   const stateDisplay = bi(mRec.state, mRec.state_en, lang);
@@ -992,6 +1117,16 @@ export default function FamilyCardClient({
 
       <div className="mx-auto max-w-lg md:max-w-2xl px-4 pt-4">
 
+        {/* Edit-blocked banner */}
+        {editBlocked && (
+          <div className="mb-3 flex items-center gap-2 rounded-[var(--r)] border-2 border-[var(--maroon)]/30 bg-[var(--raised)] px-4 py-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0 text-[var(--maroon)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <p className="text-sm text-[var(--maroon)]">{t("edit_blocked_banner", lang)}</p>
+          </div>
+        )}
+
         {/* Edit mode language hint */}
         {editing && (
           <div className="mb-3 rounded-[var(--r-sm)] bg-[var(--cream-panel)] px-3 py-2 text-center text-xs text-[var(--muted)]">
@@ -1031,10 +1166,13 @@ export default function FamilyCardClient({
             )}
             <div className="min-w-0 flex-1">
               {editing ? (
-                <EditRow
+                <AutoHindiEditRow
                   label={t("label_full_name", lang)}
-                  value={getEditVal(memberEdits as unknown as Record<string, string>, "full_name", lang)}
-                  onChange={(v) => setMemberField("full_name", v)}
+                  lang={lang}
+                  englishValue={memberEdits.full_name_en}
+                  hindiValue={memberEdits.full_name}
+                  onChangeActive={(v) => setMemberField("full_name", v)}
+                  setHindi={(v) => setMemberEdits((p) => ({ ...p, full_name: v }))}
                 />
               ) : (
                 <>
@@ -1061,7 +1199,7 @@ export default function FamilyCardClient({
             </div>
 
             {/* Edit pencil */}
-            {canEdit && !editing && (
+            {canEditEffective && !editing && (
               <button
                 onClick={startEditing}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--gold)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
@@ -1096,15 +1234,21 @@ export default function FamilyCardClient({
         <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
           {editing ? (
             <>
-              <EditRow
+              <AutoHindiEditRow
                 label={t("label_education", lang)}
-                value={getEditVal(memberEdits as unknown as Record<string, string>, "education", lang)}
-                onChange={(v) => setMemberField("education", v)}
+                lang={lang}
+                englishValue={memberEdits.education_en}
+                hindiValue={memberEdits.education}
+                onChangeActive={(v) => setMemberField("education", v)}
+                setHindi={(v) => setMemberEdits((p) => ({ ...p, education: v }))}
               />
-              <EditRow
+              <AutoHindiEditRow
                 label={t("label_occupation", lang)}
-                value={getEditVal(memberEdits as unknown as Record<string, string>, "occupation", lang)}
-                onChange={(v) => setMemberField("occupation", v)}
+                lang={lang}
+                englishValue={memberEdits.occupation_en}
+                hindiValue={memberEdits.occupation}
+                onChangeActive={(v) => setMemberField("occupation", v)}
+                setHindi={(v) => setMemberEdits((p) => ({ ...p, occupation: v }))}
               />
               <DateField
                 label={t("label_dob", lang)}
@@ -1125,6 +1269,24 @@ export default function FamilyCardClient({
                   <option value="unmarried">{lang === "en" ? "Unmarried" : "अविवाहित"}</option>
                 </select>
               </div>
+              {/* Notes textarea */}
+              <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</label>
+                <textarea
+                  value={lang === "en" ? memberEdits.notes_en : memberEdits.notes}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (lang === "en") setMemberEdits((p) => ({ ...p, notes_en: v }));
+                    else setMemberEdits((p) => ({ ...p, notes: v }));
+                  }}
+                  rows={4}
+                  maxLength={1000}
+                  className="min-h-[80px] w-full resize-y rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+                />
+                <p className="mt-1 text-right text-[11px] text-[var(--muted)]">
+                  {(lang === "en" ? memberEdits.notes_en : memberEdits.notes).length} / 1000
+                </p>
+              </div>
             </>
           ) : (
             <>
@@ -1135,9 +1297,15 @@ export default function FamilyCardClient({
                 <InfoRow label={t("label_dod", lang)} value={m.date_of_death} />
               )}
               <InfoRow label={t("label_marital_status", lang)} value={m.marital_status} />
+              {memberNotes && (
+                <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</p>
+                  <p className="whitespace-pre-line text-sm italic text-[var(--text-body)]">{memberNotes}</p>
+                </div>
+              )}
 
               {/* Mark member as married — under the marital status row */}
-              {canEdit && m.marital_status !== "married" && !showMarkMarried && (
+              {canEditEffective && m.marital_status !== "married" && !showMarkMarried && (
                 <button
                   onClick={() => setShowMarkMarried(true)}
                   className="mt-2 flex min-h-[44px] items-center rounded-[var(--r)] border border-[var(--hairline)] px-3 py-1.5 text-[13px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
@@ -1213,8 +1381,8 @@ export default function FamilyCardClient({
                   <PhoneField label={t("label_mobile", lang)} value={memberEdits.mobile_1} onChange={(v) => setMemberPlain("mobile_1", v)} />
                   <PhoneField label={t("label_mobile_2", lang)} value={memberEdits.mobile_2} onChange={(v) => setMemberPlain("mobile_2", v)} />
                   <EditRow label={t("label_email", lang)} value={memberEdits.email} onChange={(v) => setMemberPlain("email", v)} type="email" />
-                  <EditRow label={t("label_addr_line1", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line1", lang)} onChange={(v) => setMemberField("addr_line1", v)} />
-                  <EditRow label={t("label_addr_line2", lang)} value={getEditVal(memberEdits as unknown as Record<string, string>, "addr_line2", lang)} onChange={(v) => setMemberField("addr_line2", v)} />
+                  <AutoHindiEditRow label={t("label_addr_line1", lang)} lang={lang} englishValue={memberEdits.addr_line1_en} hindiValue={memberEdits.addr_line1} onChangeActive={(v) => setMemberField("addr_line1", v)} setHindi={(v) => setMemberEdits((p) => ({ ...p, addr_line1: v }))} />
+                  <AutoHindiEditRow label={t("label_addr_line2", lang)} lang={lang} englishValue={memberEdits.addr_line2_en} hindiValue={memberEdits.addr_line2} onChangeActive={(v) => setMemberField("addr_line2", v)} setHindi={(v) => setMemberEdits((p) => ({ ...p, addr_line2: v }))} />
                   <CountryStateCity
                     country={memberEdits.country}
                     countryEn={memberEdits.country_en}
@@ -1259,12 +1427,15 @@ export default function FamilyCardClient({
             <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
               {editing ? (
                 <>
-                  <EditRow
+                  <AutoHindiEditRow
                     label={t("label_husband_name", lang)}
-                    value={getEditVal(memberEdits as unknown as Record<string, string>, "husband_name", lang)}
-                    onChange={(v) => setMemberField("husband_name", v)}
+                    lang={lang}
+                    englishValue={memberEdits.husband_name_en}
+                    hindiValue={memberEdits.husband_name}
+                    onChangeActive={(v) => setMemberField("husband_name", v)}
+                    setHindi={(v) => setMemberEdits((p) => ({ ...p, husband_name: v }))}
                   />
-                  {isMarriedDaughter && canEdit && (
+                  {isMarriedDaughter && canEditEffective && (
                     <button
                       onClick={handleAddHusband}
                       disabled={addHusbandLoading}
@@ -1324,10 +1495,13 @@ export default function FamilyCardClient({
                     />
                     {editing ? (
                       <div className="flex-1">
-                        <EditRow
+                        <AutoHindiEditRow
                           label={t("label_full_name", lang)}
-                          value={getEditVal(edits as unknown as Record<string, string>, "full_name", lang)}
-                          onChange={(v) => setSpouseField(idx, "full_name", v)}
+                          lang={lang}
+                          englishValue={edits.full_name_en}
+                          hindiValue={edits.full_name}
+                          onChangeActive={(v) => setSpouseField(idx, "full_name", v)}
+                          setHindi={(v) => setSpouseEdits((prev) => { const c = [...prev]; c[idx] = { ...c[idx], full_name: v }; return c; })}
                         />
                       </div>
                     ) : (
@@ -1337,7 +1511,7 @@ export default function FamilyCardClient({
 
                   {editing ? (
                     <>
-                      <EditRow label={t("label_father_name", lang)} value={getEditVal(edits as unknown as Record<string, string>, "father_name", lang)} onChange={(v) => setSpouseField(idx, "father_name", v)} />
+                      <AutoHindiEditRow label={t("label_father_name", lang)} lang={lang} englishValue={edits.father_name_en} hindiValue={edits.father_name} onChangeActive={(v) => setSpouseField(idx, "father_name", v)} setHindi={(v) => setSpouseEdits((prev) => { const c = [...prev]; c[idx] = { ...c[idx], father_name: v }; return c; })} />
                       <GotraSelect
                         label={t("label_birth_gotra", lang)}
                         valueHi={edits.birth_gotra}
@@ -1348,13 +1522,34 @@ export default function FamilyCardClient({
                           return copy;
                         })}
                       />
-                      <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setSpouseField(idx, "education", v)} />
+                      <AutoHindiEditRow label={t("label_education", lang)} lang={lang} englishValue={edits.education_en} hindiValue={edits.education} onChangeActive={(v) => setSpouseField(idx, "education", v)} setHindi={(v) => setSpouseEdits((prev) => { const c = [...prev]; c[idx] = { ...c[idx], education: v }; return c; })} />
                       <DateField label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setSpousePlain(idx, "dob", v)} />
                       <DateField label={t("label_dom", lang)} value={edits.date_of_marriage} onChange={(v) => setSpousePlain(idx, "date_of_marriage", v)} />
                       <PhoneField label={t("label_mobile", lang)} value={edits.mobile} onChange={(v) => setSpousePlain(idx, "mobile", v)} />
                       <EditRow label={t("label_email", lang)} value={edits.email} onChange={(v) => setSpousePlain(idx, "email", v)} type="email" />
+                      {/* Notes */}
+                      <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</label>
+                        <textarea
+                          value={lang === "en" ? edits.notes_en : edits.notes}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setSpouseEdits((prev) => {
+                              const c = [...prev];
+                              c[idx] = { ...c[idx], [lang === "en" ? "notes_en" : "notes"]: v };
+                              return c;
+                            });
+                          }}
+                          rows={4}
+                          maxLength={1000}
+                          className="min-h-[80px] w-full resize-y rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+                        />
+                        <p className="mt-1 text-right text-[11px] text-[var(--muted)]">
+                          {(lang === "en" ? edits.notes_en : edits.notes).length} / 1000
+                        </p>
+                      </div>
                       {/* Remove spouse */}
-                      {canEdit && (
+                      {canEditEffective && (
                         removeSpouseConfirm === s.spouse_id ? (
                           <div className="mt-2 flex items-center gap-2">
                             <span className="flex-1 text-sm text-[var(--maroon-deep)]">Remove {sName}?</span>
@@ -1396,6 +1591,12 @@ export default function FamilyCardClient({
                       {s.date_of_death && <InfoRow label={t("label_dod", lang)} value={s.date_of_death} />}
                       <InfoRow label={t("label_mobile", lang)} value={s.mobile} />
                       <InfoRow label={t("label_email", lang)} value={s.email} />
+                      {bi(s.notes, s.notes_en, lang) && (
+                        <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</p>
+                          <p className="whitespace-pre-line text-sm italic text-[var(--text-body)]">{bi(s.notes, s.notes_en, lang)}</p>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1406,7 +1607,7 @@ export default function FamilyCardClient({
         )}
 
         {/* ── ADD WIFE (for married male members with no spouse row) ──── */}
-        {canEdit && isMarriedMember && !memberIsFemale && spouses.length === 0 && (
+        {canEditEffective && isMarriedMember && !memberIsFemale && spouses.length === 0 && (
           <>
             <SectionTitle>
               💑 {t("section_spouse", lang)}
@@ -1456,7 +1657,7 @@ export default function FamilyCardClient({
         )}
 
         {/* ── CHILDREN (merged: member-children + child-row children) ───── */}
-        {(mergedChildren.length > 0 || (isMarriedMember && canEdit)) && (
+        {(mergedChildren.length > 0 || (isMarriedMember && canEditEffective)) && (
           <>
             <SectionTitle>
               👶 {t("section_children", lang)}
@@ -1532,12 +1733,33 @@ export default function FamilyCardClient({
 
                       {editing ? (
                         <div className="flex-1">
-                          <EditRow label={t("label_full_name", lang)} value={getEditVal(edits as unknown as Record<string, string>, "full_name", lang)} onChange={(v) => setChildField(idx, "full_name", v)} />
+                          <AutoHindiEditRow label={t("label_full_name", lang)} lang={lang} englishValue={edits.full_name_en} hindiValue={edits.full_name} onChangeActive={(v) => setChildField(idx, "full_name", v)} setHindi={(v) => setChildEdits((prev) => { const cp = [...prev]; cp[idx] = { ...cp[idx], full_name: v }; return cp; })} />
                           <EditRow label={t("label_gender", lang)} value={edits.gender} onChange={(v) => setChildPlain(idx, "gender", v)} />
                           <DateField label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setChildPlain(idx, "dob", v)} />
-                          <EditRow label={t("label_education", lang)} value={getEditVal(edits as unknown as Record<string, string>, "education", lang)} onChange={(v) => setChildField(idx, "education", v)} />
+                          <AutoHindiEditRow label={t("label_education", lang)} lang={lang} englishValue={edits.education_en} hindiValue={edits.education} onChangeActive={(v) => setChildField(idx, "education", v)} setHindi={(v) => setChildEdits((prev) => { const cp = [...prev]; cp[idx] = { ...cp[idx], education: v }; return cp; })} />
+                          {/* Notes */}
+                          <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                            <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</label>
+                            <textarea
+                              value={lang === "en" ? edits.notes_en : edits.notes}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setChildEdits((prev) => {
+                                  const cp = [...prev];
+                                  cp[idx] = { ...cp[idx], [lang === "en" ? "notes_en" : "notes"]: v };
+                                  return cp;
+                                });
+                              }}
+                              rows={4}
+                              maxLength={1000}
+                              className="min-h-[80px] w-full resize-y rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
+                            />
+                            <p className="mt-1 text-right text-[11px] text-[var(--muted)]">
+                              {(lang === "en" ? edits.notes_en : edits.notes).length} / 1000
+                            </p>
+                          </div>
                           {/* Remove child */}
-                          {canEdit && (
+                          {canEditEffective && (
                             removeChildConfirm === c.child_id ? (
                               <div className="mt-2 flex items-center gap-2">
                                 <span className="flex-1 text-sm text-[var(--maroon-deep)]">Remove {cName}?</span>
@@ -1581,8 +1803,11 @@ export default function FamilyCardClient({
                             {(c.gender || c.dob) && cEducation && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
                             {cEducation && <span>{cEducation}</span>}
                           </div>
+                          {bi(c.notes, c.notes_en, lang) && (
+                            <p className="mt-1.5 whitespace-pre-line text-[13px] italic text-[var(--text-body)]">{bi(c.notes, c.notes_en, lang)}</p>
+                          )}
                           {/* Mark as married — only in view mode, when user has edit permission */}
-                          {canEdit && !isConfirming && (
+                          {canEditEffective && !isConfirming && (
                             <button
                               onClick={() => { setPromotingChildId(c.child_id); setPromoteHusbandName(""); }}
                               className="mt-2 flex min-h-[44px] items-center rounded-[var(--r)] border border-[var(--hairline)] px-3 py-1.5 text-[13px] font-medium text-[var(--gold-deep)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--cream-panel)]"
@@ -1634,7 +1859,7 @@ export default function FamilyCardClient({
                   </div>
                 );
               })}
-              {isMarriedMember && canEdit && !editing && (
+              {isMarriedMember && canEditEffective && !editing && (
                 <div className="mt-3">
                   {!showAddChild ? (
                     <button

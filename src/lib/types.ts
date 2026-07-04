@@ -38,6 +38,9 @@ export interface Member {
   origin: string | null;
   review_flags: string | null;
   photo_url: string | null;
+  notes: string | null;
+  notes_en: string | null;
+  edit_blocked: boolean;
 }
 
 export interface Spouse {
@@ -58,6 +61,8 @@ export interface Spouse {
   mobile: string | null;
   email: string | null;
   photo_url: string | null;
+  notes: string | null;
+  notes_en: string | null;
 }
 
 export interface Child {
@@ -72,4 +77,6 @@ export interface Child {
   education_en: string | null;
   marital_status: string | null;
   photo_url: string | null;
+  notes: string | null;
+  notes_en: string | null;
 }

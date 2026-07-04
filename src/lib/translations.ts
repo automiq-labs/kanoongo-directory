@@ -384,6 +384,27 @@ const translations = {
   adm_popup_logins_7d: { en: "Logins — Last 7 Days", hi: "लॉगिन — पिछले 7 दिन" },
   adm_popup_empty: { en: "None in the last 7 days", hi: "पिछले 7 दिनों में कोई नहीं" },
   adm_popup_times: { en: "times", hi: "बार" },
+
+  // Hindi auto-fill (transliteration)
+  adm_fill_hindi: { en: "हिंदी भरें", hi: "हिंदी भरें" },
+  adm_fill_all_hindi: { en: "Fill all Hindi", hi: "सभी हिंदी भरें" },
+  adm_fill_unavailable: { en: "Auto-fill unavailable — please type", hi: "अनुवाद उपलब्ध नहीं — कृपया टाइप करें" },
+  adm_filling: { en: "Filling…", hi: "भरा जा रहा है…" },
+
+  // Notes ("About me")
+  label_notes: { en: "About", hi: "अपने बारे में" },
+  adm_field_notes: { en: "Notes (Hindi)", hi: "नोट (हिंदी)" },
+  adm_field_notes_en: { en: "Notes (English)", hi: "नोट (अंग्रेज़ी)" },
+  adm_group_notes: { en: "Notes", hi: "नोट" },
+  notes_too_long: { en: "Note is too long", hi: "नोट बहुत लंबा है" },
+
+  // Edit blocking
+  adm_filter_blocked: { en: "Blocked", hi: "अवरुद्ध" },
+  adm_badge_blocked: { en: "Editing blocked", hi: "संपादन बंद" },
+  adm_edit_allowed: { en: "Editing allowed", hi: "संपादन की अनुमति" },
+  adm_edit_blocked: { en: "Editing blocked", hi: "संपादन बंद" },
+  adm_edit_blocked_desc: { en: "This member cannot edit their family's details", hi: "इनके परिवार का संपादन बंद है" },
+  edit_blocked_banner: { en: "Editing is currently disabled — please contact the admin", hi: "संपादन अभी बंद है — कृपया व्यवस्थापक से संपर्क करें" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

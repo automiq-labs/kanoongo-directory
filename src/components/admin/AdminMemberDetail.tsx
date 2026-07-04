@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang, type TranslationKey } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
+import { transliteratePhrase } from "@/lib/transliterate";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Types
@@ -97,39 +98,42 @@ interface MemberDetail {
 interface FieldDef {
   key: string;
   label: TranslationKey;
-  group: "identity" | "contact" | "address" | "family";
-  type?: "text" | "select" | "checkbox";
+  group: "identity" | "contact" | "address" | "family" | "notes";
+  type?: "text" | "select" | "checkbox" | "textarea";
   options?: string[];
   femaleOnly?: boolean;
+  /** If this Hindi field can be auto-filled from its English counterpart, set the English field key here. */
+  enCounterpart?: string;
+  maxLength?: number;
 }
 
 const MEMBER_FIELDS: FieldDef[] = [
-  { key: "full_name", label: "adm_field_full_name", group: "identity" },
+  { key: "full_name", label: "adm_field_full_name", group: "identity", enCounterpart: "full_name_en" },
   { key: "full_name_en", label: "adm_field_full_name_en", group: "identity" },
   { key: "gender", label: "adm_field_gender", group: "identity", type: "select", options: ["M", "F"] },
-  { key: "education", label: "adm_field_education", group: "identity" },
+  { key: "education", label: "adm_field_education", group: "identity", enCounterpart: "education_en" },
   { key: "education_en", label: "adm_field_education_en", group: "identity" },
-  { key: "occupation", label: "adm_field_occupation", group: "identity" },
+  { key: "occupation", label: "adm_field_occupation", group: "identity", enCounterpart: "occupation_en" },
   { key: "occupation_en", label: "adm_field_occupation_en", group: "identity" },
   { key: "photo_url", label: "adm_field_photo_url", group: "identity" },
   { key: "mobile_1", label: "adm_field_mobile_1", group: "contact" },
   { key: "mobile_2", label: "adm_field_mobile_2", group: "contact" },
   { key: "email", label: "adm_field_email", group: "contact" },
-  { key: "addr_line1", label: "adm_field_addr_line1", group: "address" },
+  { key: "addr_line1", label: "adm_field_addr_line1", group: "address", enCounterpart: "addr_line1_en" },
   { key: "addr_line1_en", label: "adm_field_addr_line1_en", group: "address" },
-  { key: "addr_line2", label: "adm_field_addr_line2", group: "address" },
+  { key: "addr_line2", label: "adm_field_addr_line2", group: "address", enCounterpart: "addr_line2_en" },
   { key: "addr_line2_en", label: "adm_field_addr_line2_en", group: "address" },
-  { key: "city", label: "adm_field_city", group: "address" },
+  { key: "city", label: "adm_field_city", group: "address", enCounterpart: "city_en" },
   { key: "city_en", label: "adm_field_city_en", group: "address" },
-  { key: "state", label: "adm_field_state", group: "address" },
+  { key: "state", label: "adm_field_state", group: "address", enCounterpart: "state_en" },
   { key: "state_en", label: "adm_field_state_en", group: "address" },
-  { key: "country", label: "adm_field_country", group: "address" },
+  { key: "country", label: "adm_field_country", group: "address", enCounterpart: "country_en" },
   { key: "country_en", label: "adm_field_country_en", group: "address" },
   { key: "pincode", label: "adm_field_pincode", group: "address" },
-  { key: "gotra", label: "adm_field_gotra", group: "family" },
+  { key: "gotra", label: "adm_field_gotra", group: "family", enCounterpart: "gotra_en" },
   { key: "gotra_en", label: "adm_field_gotra_en", group: "family" },
   { key: "marital_status", label: "adm_field_marital_status", group: "family", femaleOnly: true },
-  { key: "husband_name", label: "adm_field_husband_name", group: "family", femaleOnly: true },
+  { key: "husband_name", label: "adm_field_husband_name", group: "family", femaleOnly: true, enCounterpart: "husband_name_en" },
   { key: "husband_name_en", label: "adm_field_husband_name_en", group: "family", femaleOnly: true },
   { key: "origin", label: "adm_field_origin", group: "family" },
   { key: "father_name_raw", label: "adm_field_father_name_raw", group: "family" },
@@ -138,6 +142,9 @@ const MEMBER_FIELDS: FieldDef[] = [
   { key: "date_of_death", label: "adm_field_date_of_death", group: "family" },
   { key: "is_deceased", label: "adm_field_is_deceased", group: "family", type: "checkbox" },
   { key: "sort_seq", label: "adm_field_sort_seq", group: "family" },
+  // Notes
+  { key: "notes", label: "adm_field_notes", group: "notes", type: "textarea", maxLength: 1000, enCounterpart: "notes_en" },
+  { key: "notes_en", label: "adm_field_notes_en", group: "notes", type: "textarea", maxLength: 1000 },
 ];
 
 const GROUP_LABELS: Record<string, TranslationKey> = {
@@ -145,38 +152,43 @@ const GROUP_LABELS: Record<string, TranslationKey> = {
   contact: "adm_group_contact",
   address: "adm_group_address",
   family: "adm_group_family",
+  notes: "adm_group_notes",
 };
 
-interface SimpleFieldDef { key: string; label: TranslationKey; type?: "text" | "select" | "checkbox"; options?: string[] }
+interface SimpleFieldDef { key: string; label: TranslationKey; type?: "text" | "select" | "checkbox" | "textarea"; options?: string[]; enCounterpart?: string; maxLength?: number }
 
 const SPOUSE_FIELDS: SimpleFieldDef[] = [
-  { key: "full_name", label: "adm_field_full_name" },
+  { key: "full_name", label: "adm_field_full_name", enCounterpart: "full_name_en" },
   { key: "full_name_en", label: "adm_field_full_name_en" },
   { key: "gender", label: "adm_field_gender", type: "select", options: ["M", "F"] },
-  { key: "father_name", label: "adm_spouse_father_name" },
+  { key: "father_name", label: "adm_spouse_father_name", enCounterpart: "father_name_en" },
   { key: "father_name_en", label: "adm_spouse_father_name_en" },
-  { key: "birth_gotra", label: "adm_spouse_birth_gotra" },
+  { key: "birth_gotra", label: "adm_spouse_birth_gotra", enCounterpart: "birth_gotra_en" },
   { key: "birth_gotra_en", label: "adm_spouse_birth_gotra_en" },
   { key: "dob", label: "adm_field_dob" },
   { key: "date_of_marriage", label: "adm_spouse_dom" },
   { key: "date_of_death", label: "adm_field_date_of_death" },
-  { key: "education", label: "adm_field_education" },
+  { key: "education", label: "adm_field_education", enCounterpart: "education_en" },
   { key: "education_en", label: "adm_field_education_en" },
   { key: "email", label: "adm_field_email" },
   { key: "mobile", label: "adm_spouse_mobile" },
   { key: "photo_url", label: "adm_field_photo_url" },
+  { key: "notes", label: "adm_field_notes", type: "textarea", maxLength: 1000, enCounterpart: "notes_en" },
+  { key: "notes_en", label: "adm_field_notes_en", type: "textarea", maxLength: 1000 },
 ];
 
 const CHILD_FIELDS: SimpleFieldDef[] = [
-  { key: "full_name", label: "adm_field_full_name" },
+  { key: "full_name", label: "adm_field_full_name", enCounterpart: "full_name_en" },
   { key: "full_name_en", label: "adm_field_full_name_en" },
   { key: "gender", label: "adm_field_gender", type: "select", options: ["M", "F"] },
   { key: "dob", label: "adm_field_dob" },
-  { key: "education", label: "adm_field_education" },
+  { key: "education", label: "adm_field_education", enCounterpart: "education_en" },
   { key: "education_en", label: "adm_field_education_en" },
   { key: "marital_status", label: "adm_child_marital" },
   { key: "photo_url", label: "adm_field_photo_url" },
   { key: "gender_confirmed", label: "adm_child_gender_confirmed", type: "checkbox" },
+  { key: "notes", label: "adm_field_notes", type: "textarea", maxLength: 1000, enCounterpart: "notes_en" },
+  { key: "notes_en", label: "adm_field_notes_en", type: "textarea", maxLength: 1000 },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -210,6 +222,7 @@ function relativeTime(iso: string | null, lang: string): string {
 
 function mapServerError(code: string, lang: Lang): string {
   if (code.includes("invalid_dob_format")) return t("adm_invalid_dob", lang);
+  if (code.includes("notes") && (code.includes("constraint") || code.includes("1000") || code.includes("too long"))) return t("notes_too_long", lang);
   return code;
 }
 
@@ -248,11 +261,18 @@ function FieldInput({
   value,
   onChange,
   lang,
+  onFillHindi,
+  fillBusy,
+  fillMsg,
 }: {
   field: SimpleFieldDef;
   value: unknown;
   onChange: (v: unknown) => void;
   lang: Lang;
+  /** If set, show the "हिंदी भरें" button */
+  onFillHindi?: () => void;
+  fillBusy?: boolean;
+  fillMsg?: string;
 }) {
   if (field.type === "checkbox") {
     return (
@@ -281,13 +301,56 @@ function FieldInput({
       </select>
     );
   }
+  if (field.type === "textarea") {
+    const strVal = String(value ?? "");
+    return (
+      <div>
+        <div className="flex gap-1.5">
+          <textarea
+            value={strVal}
+            onChange={(e) => onChange(e.target.value)}
+            rows={4}
+            maxLength={field.maxLength}
+            className={`${INPUT_CLS} min-h-[80px] resize-y`}
+          />
+          {onFillHindi && (
+            <button
+              type="button"
+              onClick={onFillHindi}
+              disabled={fillBusy}
+              className="shrink-0 self-start mt-1 min-h-[40px] rounded-[var(--r-sm)] border border-[var(--gold)]/50 px-2.5 text-[11px] font-medium text-[var(--gold-deep)] hover:bg-[rgba(201,150,46,0.08)] disabled:opacity-50"
+            >
+              {fillBusy ? "…" : t("adm_fill_hindi", lang)}
+            </button>
+          )}
+        </div>
+        {field.maxLength && <p className="mt-1 text-right text-[11px] text-[var(--muted)]">{strVal.length} / {field.maxLength}</p>}
+        {fillMsg && <p className="mt-1 text-[11px] text-[var(--muted)]">{fillMsg}</p>}
+      </div>
+    );
+  }
   return (
-    <input
-      type="text"
-      value={String(value ?? "")}
-      onChange={(e) => onChange(e.target.value)}
-      className={INPUT_CLS}
-    />
+    <div>
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+          className={INPUT_CLS}
+        />
+        {onFillHindi && (
+          <button
+            type="button"
+            onClick={onFillHindi}
+            disabled={fillBusy}
+            className="shrink-0 min-h-[40px] rounded-[var(--r-sm)] border border-[var(--gold)]/50 px-2.5 text-[11px] font-medium text-[var(--gold-deep)] hover:bg-[rgba(201,150,46,0.08)] disabled:opacity-50"
+          >
+            {fillBusy ? "…" : t("adm_fill_hindi", lang)}
+          </button>
+        )}
+      </div>
+      {fillMsg && <p className="mt-1 text-[11px] text-[var(--muted)]">{fillMsg}</p>}
+    </div>
   );
 }
 
@@ -360,6 +423,11 @@ export default function AdminMemberDetail({
   const [promoteSaving, setPromoteSaving] = useState(false);
   const [markMarriedConfirm, setMarkMarriedConfirm] = useState(false);
   const [markMarriedSaving, setMarkMarriedSaving] = useState(false);
+
+  /* ── Hindi auto-fill (transliteration) ─────────────────────────── */
+  const [fillingField, setFillingField] = useState<string | null>(null);
+  const [fillMessages, setFillMessages] = useState<Record<string, string>>({});
+  const [fillingAll, setFillingAll] = useState<string | null>(null); // "member" | "spouse" | "child" | null
 
   /* ── Tree children expand ─────────────────────────────────────── */
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -628,6 +696,55 @@ export default function AdminMemberDetail({
     setExpandedNodes(next);
   }
 
+  /* ── Hindi auto-fill handlers ──────────────────────────────────── */
+
+  /**
+   * Fill a single Hindi field from its English counterpart.
+   * `scope` / `vals` / `setter` identify which edit form (member, spouse, child).
+   */
+  async function fillOneHindiField(
+    hiKey: string,
+    enKey: string,
+    vals: Record<string, unknown>,
+    setter: (fn: (prev: Record<string, unknown>) => Record<string, unknown>) => void,
+    markDirty?: () => void,
+  ): Promise<boolean> {
+    const enVal = String(vals[enKey] ?? "").trim();
+    const hiVal = String(vals[hiKey] ?? "").trim();
+    if (!enVal || hiVal) return true; // nothing to fill or already filled
+    setFillingField(hiKey);
+    setFillMessages((p) => { const n = { ...p }; delete n[hiKey]; return n; });
+    const result = await transliteratePhrase(enVal);
+    if (result) {
+      setter((p) => ({ ...p, [hiKey]: result }));
+      markDirty?.();
+      setFillingField(null);
+      return true;
+    }
+    setFillMessages((p) => ({ ...p, [hiKey]: t("adm_fill_unavailable", lang) }));
+    setFillingField(null);
+    return false;
+  }
+
+  async function handleFillAllHindi(
+    scope: string,
+    fields: (SimpleFieldDef | FieldDef)[],
+    vals: Record<string, unknown>,
+    setter: (fn: (prev: Record<string, unknown>) => Record<string, unknown>) => void,
+    markDirty?: () => void,
+  ) {
+    setFillingAll(scope);
+    setFillMessages({});
+    const eligible = fields.filter((f) => f.enCounterpart);
+    for (const f of eligible) {
+      // Read latest vals from setter (closure over latest state)
+      await fillOneHindiField(f.key, f.enCounterpart!, vals, setter, markDirty);
+      // Update vals reference to reflect the set — we re-read via a trick:
+      // Since setter is a React state setter, the next iteration picks up the latest via closure.
+    }
+    setFillingAll(null);
+  }
+
   /* ── Danger zone handlers ─────────────────────────────────────── */
   async function handleUnlink() {
     setDangerLoading(true);
@@ -673,7 +790,7 @@ export default function AdminMemberDetail({
   const removedChildren = detail?.children.filter((c) => c.removed_at) ?? [];
   const memberMaritalStatus = String(detail?.member.marital_status ?? "").toLowerCase();
   const isUnmarried = !memberMaritalStatus || memberMaritalStatus === "unmarried";
-  const groups = ["identity", "contact", "address", "family"] as const;
+  const groups = ["identity", "contact", "address", "family", "notes"] as const;
 
   /* ═══════════════════════════════════════════════════════════════
      Render
@@ -750,6 +867,39 @@ export default function AdminMemberDetail({
                 ) : (
                   <p className="mt-1 text-sm text-[var(--muted)]">{t("adm_unclaimed_label", lang)}</p>
                 )}
+                {/* Edit blocking toggle */}
+                <div className="mt-2 flex items-center justify-between border-t border-[var(--hairline)] pt-2">
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--maroon-deep)]">
+                      {detail.member.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
+                    </p>
+                    <p className="text-[11px] text-[var(--muted)]">{t("adm_edit_blocked_desc", lang)}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const cur = Boolean(detail.member.edit_blocked);
+                      await supabase.rpc("admin_set_edit_blocked", { p_member_id: currentId, p_blocked: !cur });
+                      await fetchDetail(currentId);
+                      onRefresh();
+                    }}
+                    className={`ml-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[1.5px] ${
+                      detail.member.edit_blocked
+                        ? "border-[var(--maroon)] bg-[rgba(110,30,42,0.08)] text-[var(--maroon)]"
+                        : "border-green-500/40 bg-[rgba(34,139,34,0.06)] text-green-600"
+                    }`}
+                    aria-label={detail.member.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
+                  >
+                    {detail.member.edit_blocked ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Stat pills */}
@@ -770,19 +920,40 @@ export default function AdminMemberDetail({
 
               {/* ══════ SECTION A: MEMBER EDIT ══════════════════════ */}
               <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
-                <h3 className="font-display text-base font-semibold text-[var(--maroon)] mb-3">{t("adm_edit_member", lang)}</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-display text-base font-semibold text-[var(--maroon)]">{t("adm_edit_member", lang)}</h3>
+                  <button
+                    onClick={() => handleFillAllHindi("member", MEMBER_FIELDS, editValues, setEditValues, () => setSaveMsg(""))}
+                    disabled={!!fillingAll || !!fillingField}
+                    className="flex items-center gap-1.5 min-h-[32px] rounded-[var(--r-sm)] border border-[var(--gold)]/50 px-3 py-1 text-[11px] font-medium text-[var(--gold-deep)] hover:bg-[rgba(201,150,46,0.08)] disabled:opacity-50"
+                  >
+                    {fillingAll === "member" && <span className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--gold)] border-t-transparent" />}
+                    {t("adm_fill_all_hindi", lang)}
+                  </button>
+                </div>
                 {groups.map((group) => {
                   const fields = MEMBER_FIELDS.filter((f) => f.group === group && (!f.femaleOnly || memberGenderIsFemale));
                   return (
                     <div key={group} className="mb-4">
                       <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--gold-deep)]">{t(GROUP_LABELS[group], lang)}</p>
                       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        {fields.map((f) => (
-                          <div key={f.key}>
-                            <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t(f.label, lang)}</label>
-                            <FieldInput field={f} value={editValues[f.key]} onChange={(v) => setField(f.key, v)} lang={lang} />
-                          </div>
-                        ))}
+                        {fields.map((f) => {
+                          const showFill = f.enCounterpart && String(editValues[f.enCounterpart] ?? "").trim() && !String(editValues[f.key] ?? "").trim();
+                          return (
+                            <div key={f.key}>
+                              <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t(f.label, lang)}</label>
+                              <FieldInput
+                                field={f}
+                                value={editValues[f.key]}
+                                onChange={(v) => setField(f.key, v)}
+                                lang={lang}
+                                onFillHindi={showFill ? () => fillOneHindiField(f.key, f.enCounterpart!, editValues, setEditValues, () => setSaveMsg("")) : undefined}
+                                fillBusy={fillingField === f.key}
+                                fillMsg={fillMessages[f.key]}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -880,13 +1051,34 @@ export default function AdminMemberDetail({
                     </div>
                     {editingSpouseId === sp.spouse_id && (
                       <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+                        <div className="mb-2 flex justify-end">
+                          <button
+                            onClick={() => handleFillAllHindi("spouse", SPOUSE_FIELDS, spouseEdits, setSpouseEdits, () => setSpouseMsg(""))}
+                            disabled={!!fillingAll || !!fillingField}
+                            className="flex items-center gap-1 text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)] disabled:opacity-50"
+                          >
+                            {fillingAll === "spouse" && <span className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--gold)] border-t-transparent" />}
+                            {t("adm_fill_all_hindi", lang)}
+                          </button>
+                        </div>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {SPOUSE_FIELDS.map((f) => (
-                            <div key={f.key}>
-                              <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t(f.label, lang)}</label>
-                              <FieldInput field={f} value={spouseEdits[f.key]} onChange={(v) => { setSpouseMsg(""); setSpouseEdits((p) => ({ ...p, [f.key]: v })); }} lang={lang} />
-                            </div>
-                          ))}
+                          {SPOUSE_FIELDS.map((f) => {
+                            const showFill = f.enCounterpart && String(spouseEdits[f.enCounterpart] ?? "").trim() && !String(spouseEdits[f.key] ?? "").trim();
+                            return (
+                              <div key={f.key}>
+                                <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t(f.label, lang)}</label>
+                                <FieldInput
+                                  field={f}
+                                  value={spouseEdits[f.key]}
+                                  onChange={(v) => { setSpouseMsg(""); setSpouseEdits((p) => ({ ...p, [f.key]: v })); }}
+                                  lang={lang}
+                                  onFillHindi={showFill ? () => fillOneHindiField(f.key, f.enCounterpart!, spouseEdits, setSpouseEdits, () => setSpouseMsg("")) : undefined}
+                                  fillBusy={fillingField === f.key}
+                                  fillMsg={fillMessages[f.key]}
+                                />
+                              </div>
+                            );
+                          })}
                         </div>
                         <div className="mt-2 flex items-center gap-2">
                           <button onClick={handleSaveSpouse} disabled={spouseSaving} className="min-h-[32px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-xs font-medium text-[var(--ivory)] disabled:opacity-50">
@@ -989,13 +1181,34 @@ export default function AdminMemberDetail({
                       {/* Inline edit */}
                       {editingChildId === ch.child_id && (
                         <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+                          <div className="mb-2 flex justify-end">
+                            <button
+                              onClick={() => handleFillAllHindi("child", CHILD_FIELDS, childEdits, setChildEdits, () => setChildMsg(""))}
+                              disabled={!!fillingAll || !!fillingField}
+                              className="flex items-center gap-1 text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)] disabled:opacity-50"
+                            >
+                              {fillingAll === "child" && <span className="inline-block h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--gold)] border-t-transparent" />}
+                              {t("adm_fill_all_hindi", lang)}
+                            </button>
+                          </div>
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {CHILD_FIELDS.map((f) => (
-                              <div key={f.key}>
-                                <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t(f.label, lang)}</label>
-                                <FieldInput field={f} value={childEdits[f.key]} onChange={(v) => { setChildMsg(""); setChildEdits((p) => ({ ...p, [f.key]: v })); }} lang={lang} />
-                              </div>
-                            ))}
+                            {CHILD_FIELDS.map((f) => {
+                              const showFill = f.enCounterpart && String(childEdits[f.enCounterpart] ?? "").trim() && !String(childEdits[f.key] ?? "").trim();
+                              return (
+                                <div key={f.key}>
+                                  <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t(f.label, lang)}</label>
+                                  <FieldInput
+                                    field={f}
+                                    value={childEdits[f.key]}
+                                    onChange={(v) => { setChildMsg(""); setChildEdits((p) => ({ ...p, [f.key]: v })); }}
+                                    lang={lang}
+                                    onFillHindi={showFill ? () => fillOneHindiField(f.key, f.enCounterpart!, childEdits, setChildEdits, () => setChildMsg("")) : undefined}
+                                    fillBusy={fillingField === f.key}
+                                    fillMsg={fillMessages[f.key]}
+                                  />
+                                </div>
+                              );
+                            })}
                           </div>
                           <div className="mt-2 flex items-center gap-2">
                             <button onClick={handleSaveChild} disabled={childSaving} className="min-h-[32px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-xs font-medium text-[var(--ivory)] disabled:opacity-50">

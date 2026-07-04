@@ -60,9 +60,10 @@ interface MemberRow {
   claimed: boolean;
   claim_email: string | null;
   last_sign_in_at: string | null;
+  edit_blocked: boolean;
 }
 
-type MemberFilter = "all" | "claimed" | "unclaimed" | "incomplete" | "complete" | "deceased";
+type MemberFilter = "all" | "claimed" | "unclaimed" | "incomplete" | "complete" | "deceased" | "blocked";
 
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -258,6 +259,23 @@ export default function AdminClient() {
     setExporting(false);
   }
 
+  async function handleToggleEditBlocked(memberId: string, currentBlocked: boolean) {
+    // Optimistic update
+    setMemberRows((prev) =>
+      prev.map((r) => r.member_id === memberId ? { ...r, edit_blocked: !currentBlocked } : r),
+    );
+    const { error } = await supabase.rpc("admin_set_edit_blocked", {
+      p_member_id: memberId,
+      p_blocked: !currentBlocked,
+    });
+    if (error) {
+      // Revert on error
+      setMemberRows((prev) =>
+        prev.map((r) => r.member_id === memberId ? { ...r, edit_blocked: currentBlocked } : r),
+      );
+    }
+  }
+
   // ── Settings ───────────────────────────────────────────────────────
   const [inviteCode, setInviteCode] = useState("");
   const [newInviteCode, setNewInviteCode] = useState("");
@@ -402,6 +420,7 @@ export default function AdminClient() {
     { key: "incomplete", label: t("adm_filter_incomplete", lang) },
     { key: "complete", label: t("adm_filter_complete", lang) },
     { key: "deceased", label: t("adm_filter_deceased", lang) },
+    { key: "blocked", label: t("adm_filter_blocked", lang) },
   ];
 
   const inputClass =
@@ -681,11 +700,32 @@ export default function AdminClient() {
                               {t("adm_badge_deceased", lang)}
                             </span>
                           )}
+                          {row.edit_blocked && (
+                            <span className="rounded-[var(--r-pill)] bg-[rgba(110,30,42,0.1)] px-2 py-0.5 text-[10px] font-semibold text-[var(--maroon)]">
+                              {t("adm_badge_blocked", lang)}
+                            </span>
+                          )}
                         </div>
                       </div>
 
-                      {/* Last sign-in */}
-                      <div className="shrink-0 text-right">
+                      {/* Edit toggle + last sign-in */}
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggleEditBlocked(row.member_id, row.edit_blocked); }}
+                          title={row.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
+                          aria-label={row.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
+                          className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-[var(--cream-panel)]"
+                        >
+                          {row.edit_blocked ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[var(--maroon)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-600 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
                         <p className="text-[11px] text-[var(--muted)]">
                           {relativeTime(row.last_sign_in_at, lang)}
                         </p>
