@@ -14,7 +14,6 @@ export const HI_DICTIONARY: Record<string, string> = {
   // Occupations
   farmer: "किसान",
   housewife: "गृहिणी",
-  teacher: "शिक्षक",
   doctor: "डॉक्टर",
   engineer: "इंजीनियर",
   business: "व्यवसाय",
