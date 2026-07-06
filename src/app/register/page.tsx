@@ -170,13 +170,8 @@ export default function RegisterPage() {
     setError("");
     setCodeLoading(true);
     try {
-      const { data } = await supabase
-        .from("app_settings")
-        .select("value")
-        .eq("key", "invite_code")
-        .single();
-
-      if (data?.value === code.trim()) {
+      const { data } = await supabase.rpc("validate_invite_code", { p_code: code.trim() });
+      if (data === true) {
         setStep("name");
       } else {
         setError(t("reg_code_wrong", lang));
@@ -216,13 +211,13 @@ export default function RegisterPage() {
         return;
       }
       setParentSearching(true);
-      const { data, error } = await supabase.rpc("search_parent_fuzzy", { q: q.trim() });
+      const { data, error } = await supabase.rpc("search_parent_fuzzy", { q: q.trim(), p_invite_code: code.trim() });
       if (error) console.error("search_parent_fuzzy error:", error);
       setParentResults((data as ParentCandidate[]) || []);
       setParentSearching(false);
       setParentSearchDone(true);
     },
-    [supabase]
+    [supabase, code]
   );
 
   useEffect(() => {
@@ -238,7 +233,7 @@ export default function RegisterPage() {
 
     const { data: matches, error: rpcErr } = await supabase.rpc(
       "find_matching_children",
-      { p_parent_member_id: parent.member_id, q: fullName.trim() }
+      { p_parent_member_id: parent.member_id, q: fullName.trim(), p_invite_code: code.trim() }
     );
     if (rpcErr) console.error("find_matching_children error:", rpcErr);
 
@@ -279,13 +274,13 @@ export default function RegisterPage() {
         return;
       }
       setHusbandSearching(true);
-      const { data, error } = await supabase.rpc("search_parent_fuzzy", { q: q.trim() });
+      const { data, error } = await supabase.rpc("search_parent_fuzzy", { q: q.trim(), p_invite_code: code.trim() });
       if (error) console.error("search_parent_fuzzy error:", error);
       setHusbandResults((data as ParentCandidate[]) || []);
       setHusbandSearching(false);
       setHusbandSearchDone(true);
     },
-    [supabase]
+    [supabase, code]
   );
 
   useEffect(() => {
@@ -301,7 +296,7 @@ export default function RegisterPage() {
 
     const { data: matches, error: rpcErr } = await supabase.rpc(
       "find_matching_spouses",
-      { p_husband_member_id: husband.member_id, q: fullName.trim() }
+      { p_husband_member_id: husband.member_id, q: fullName.trim(), p_invite_code: code.trim() }
     );
     if (rpcErr) console.error("find_matching_spouses error:", rpcErr);
 
@@ -389,11 +384,17 @@ export default function RegisterPage() {
         p_parent_member_id: selectedParent?.member_id || selectedHusband?.member_id || null,
         p_claim_member_id: claimMemberId || null,
         p_claim_spouse_id: claimSpouseId || null,
+        p_invite_code: code.trim(),
       });
 
       if (rpcError) {
         console.error("complete_registration failed:", rpcError);
-        setError(t("reg_signup_error", lang));
+        if (rpcError.message.includes("invalid_invite_code")) {
+          setError(t("reg_code_wrong", lang));
+          setStep("code");
+        } else {
+          setError(t("reg_signup_error", lang));
+        }
         setCreating(false);
         return;
       }

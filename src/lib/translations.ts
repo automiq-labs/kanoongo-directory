@@ -397,6 +397,7 @@ const translations = {
   adm_field_notes_en: { en: "Notes (English)", hi: "नोट (अंग्रेज़ी)" },
   adm_group_notes: { en: "Notes", hi: "नोट" },
   notes_too_long: { en: "Note is too long", hi: "नोट बहुत लंबा है" },
+  photo_upload_failed: { en: "Photo upload failed — please try again", hi: "फ़ोटो अपलोड विफल — कृपया पुनः प्रयास करें" },
 
   // Edit blocking
   adm_filter_blocked: { en: "Blocked", hi: "अवरुद्ध" },

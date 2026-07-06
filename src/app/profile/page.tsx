@@ -31,6 +31,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -70,8 +71,13 @@ export default function ProfilePage() {
   }, [supabase]);
 
   async function handlePhotoChange(file: File) {
+    setPhotoError(null);
     const err = validateImage(file);
-    if (err) return;
+    if (err) {
+      setPhotoError(err === "photo_too_large" ? t("photo_too_large", lang) : err);
+      setTimeout(() => setPhotoError(null), 4000);
+      return;
+    }
     if (!profile?.familyId || !profile?.memberId) return;
 
     setPhotoPreview(createPreviewUrl(file));
@@ -80,13 +86,16 @@ export default function ProfilePage() {
       const url = await uploadPhoto(file, profile.familyId, "members", profile.memberId);
       const { error: updateErr } = await supabase.from("members").update({ photo_url: url }).eq("member_id", profile.memberId);
       if (updateErr) {
-        console.warn("Photo URL update failed:", updateErr.message);
+        setPhotoError(t("photo_upload_failed", lang));
+        setTimeout(() => setPhotoError(null), 4000);
       } else {
         setProfile((p) => p ? { ...p, photoUrl: url } : p);
       }
       setPhotoPreview(null);
-    } catch (e) {
-      console.error("Photo upload failed:", e);
+    } catch {
+      setPhotoError(t("photo_upload_failed", lang));
+      setTimeout(() => setPhotoError(null), 4000);
+      setPhotoPreview(null);
     } finally {
       setUploading(false);
     }
@@ -181,6 +190,9 @@ export default function ProfilePage() {
           >
             {photoSrc ? (lang === "en" ? "Change Picture" : "फ़ोटो बदलें") : (lang === "en" ? "Upload Picture" : "फ़ोटो अपलोड करें")}
           </button>
+          {photoError && (
+            <p className="mt-1.5 text-[13px] text-[var(--maroon)]">{photoError}</p>
+          )}
           <h2 className="mt-4 font-display text-2xl font-semibold text-[var(--maroon-deep)]">
             {name || t("profile_your_account", lang)}
           </h2>

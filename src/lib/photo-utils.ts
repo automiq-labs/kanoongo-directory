@@ -18,7 +18,9 @@ export function validateImage(file: File): string | null {
 export function compressImage(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
       let { width, height } = img;
       if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
         if (width > height) {
@@ -43,8 +45,8 @@ export function compressImage(file: File): Promise<Blob> {
         0.85
       );
     };
-    img.onerror = () => reject(new Error("Failed to load image"));
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Failed to load image")); };
+    img.src = objectUrl;
   });
 }
 

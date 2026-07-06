@@ -13,12 +13,6 @@ export interface Celebration {
   years: number | null;
 }
 
-export function labelForDaysUntil(n: number): string {
-  if (n === 0) return "Today";
-  if (n === 1) return "Tomorrow";
-  return `in ${n} days`;
-}
-
 export async function getCelebrations(
   supabase: SupabaseClient,
   days = 45

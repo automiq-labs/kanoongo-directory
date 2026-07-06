@@ -913,7 +913,13 @@ export default function FamilyCardClient({
       }
 
       if (Object.keys(memberPayload).length > 0) {
-        // Write edit history
+        const { data: mUpd, error } = await supabase
+          .from("members")
+          .update(memberPayload)
+          .eq("member_id", m.member_id)
+          .select("member_id");
+        if (error) throw error;
+        if (!mUpd || mUpd.length === 0) throw new Error("edit_blocked");
         const { error: histErr } = await supabase.from("edit_history").insert({
           table_name: "members",
           record_id: m.member_id,
@@ -922,12 +928,6 @@ export default function FamilyCardClient({
           previous_values: m,
         });
         if (histErr) console.warn("edit_history (members) insert failed:", histErr.message);
-        // Update
-        const { error } = await supabase
-          .from("members")
-          .update(memberPayload)
-          .eq("member_id", m.member_id);
-        if (error) throw error;
       }
 
       // --- Spouses ---
@@ -945,6 +945,13 @@ export default function FamilyCardClient({
         }
 
         if (Object.keys(payload).length > 0) {
+          const { data: sUpd, error } = await supabase
+            .from("spouses")
+            .update(payload)
+            .eq("spouse_id", s.spouse_id)
+            .select("spouse_id");
+          if (error) throw error;
+          if (!sUpd || sUpd.length === 0) throw new Error("edit_blocked");
           const { error: histErr2 } = await supabase.from("edit_history").insert({
             table_name: "spouses",
             record_id: s.spouse_id,
@@ -953,11 +960,6 @@ export default function FamilyCardClient({
             previous_values: s,
           });
           if (histErr2) console.warn("edit_history (spouses) insert failed:", histErr2.message);
-          const { error } = await supabase
-            .from("spouses")
-            .update(payload)
-            .eq("spouse_id", s.spouse_id);
-          if (error) throw error;
         }
       }
 
@@ -976,6 +978,13 @@ export default function FamilyCardClient({
         }
 
         if (Object.keys(payload).length > 0) {
+          const { data: cUpd, error } = await supabase
+            .from("children")
+            .update(payload)
+            .eq("child_id", c.child_id)
+            .select("child_id");
+          if (error) throw error;
+          if (!cUpd || cUpd.length === 0) throw new Error("edit_blocked");
           const { error: histErr3 } = await supabase.from("edit_history").insert({
             table_name: "children",
             record_id: c.child_id,
@@ -984,11 +993,6 @@ export default function FamilyCardClient({
             previous_values: c,
           });
           if (histErr3) console.warn("edit_history (children) insert failed:", histErr3.message);
-          const { error } = await supabase
-            .from("children")
-            .update(payload)
-            .eq("child_id", c.child_id);
-          if (error) throw error;
         }
       }
 
