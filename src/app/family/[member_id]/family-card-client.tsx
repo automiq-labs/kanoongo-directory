@@ -269,6 +269,10 @@ interface ChildEdits {
   dob: string;
   education: string;
   education_en: string;
+  occupation: string;
+  occupation_en: string;
+  mobile: string;
+  email: string;
   notes: string;
   notes_en: string;
 }
@@ -335,6 +339,10 @@ function childToEdits(c: Child): ChildEdits {
     dob: c.dob || "",
     education: c.education || "",
     education_en: c.education_en || "",
+    occupation: c.occupation || "",
+    occupation_en: c.occupation_en || "",
+    mobile: c.mobile || "",
+    email: c.email || "",
     notes: c.notes || "",
     notes_en: c.notes_en || "",
   };
@@ -1124,7 +1132,7 @@ export default function FamilyCardClient({
       );
       setSpouseEdits(sweptSpouses as unknown as SpouseEdits[]);
 
-      const childPairs: [string, string][] = [["full_name", "full_name_en"], ["education", "education_en"], ["notes", "notes_en"]];
+      const childPairs: [string, string][] = [["full_name", "full_name_en"], ["education", "education_en"], ["notes", "notes_en"], ["occupation", "occupation_en"]];
       const sweptChildren = await Promise.all(
         childEdits.map((ce) => sweepAutoHindi(ce as unknown as Record<string, string>, childPairs)),
       );
@@ -1246,8 +1254,8 @@ export default function FamilyCardClient({
         const payload = buildBilingualPayload(
           edits as unknown as Record<string, string>,
           c as unknown as Record<string, string | null>,
-          ["full_name", "education", "notes"],
-          ["gender", "dob"]
+          ["full_name", "education", "notes", "occupation"],
+          ["gender", "dob", "mobile", "email"]
         );
         if (childPhotoUrls[c.child_id] !== undefined) {
           payload.photo_url = childPhotoUrls[c.child_id];
@@ -2032,6 +2040,9 @@ export default function FamilyCardClient({
                           <EditRow label={t("label_gender", lang)} value={edits.gender} onChange={(v) => setChildPlain(idx, "gender", v)} />
                           <DateField label={t("label_dob", lang)} value={edits.dob} onChange={(v) => setChildPlain(idx, "dob", v)} />
                           <AutoHindiEditRow label={t("label_education", lang)} lang={lang} englishValue={edits.education_en} hindiValue={edits.education} onChangeActive={(v) => setChildField(idx, "education", v)} setHindi={(v) => setChildEdits((prev) => { const cp = [...prev]; cp[idx] = { ...cp[idx], education: v }; return cp; })} />
+                          <AutoHindiEditRow label={t("label_occupation", lang)} lang={lang} englishValue={edits.occupation_en} hindiValue={edits.occupation} onChangeActive={(v) => setChildField(idx, "occupation", v)} setHindi={(v) => setChildEdits((prev) => { const cp = [...prev]; cp[idx] = { ...cp[idx], occupation: v }; return cp; })} />
+                          <PhoneField label={t("label_mobile", lang)} value={edits.mobile} onChange={(v) => setChildPlain(idx, "mobile", v)} />
+                          <EditRow label={t("label_email", lang)} value={edits.email} onChange={(v) => setChildPlain(idx, "email", v)} type="email" />
                           {/* Notes */}
                           <div className="border-b border-[var(--hairline)] py-2 last:border-0">
                             <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</label>
@@ -2098,6 +2109,11 @@ export default function FamilyCardClient({
                             {(c.gender || c.dob) && cEducation && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
                             {cEducation && <span>{cEducation}</span>}
                           </div>
+                          {bi(c.occupation, c.occupation_en, lang) && (
+                            <p className="mt-1 text-[13px] text-[var(--muted)]">{t("label_occupation", lang)}: {bi(c.occupation, c.occupation_en, lang)}</p>
+                          )}
+                          {c.mobile && <p className="mt-0.5 text-[13px]">{renderMobiles(c.mobile)}</p>}
+                          {c.email && <p className="mt-0.5 text-[13px]"><a href={`mailto:${c.email}`} className="text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">{c.email}</a></p>}
                           {bi(c.notes, c.notes_en, lang) && (
                             <p className="mt-1.5 whitespace-pre-line text-[13px] italic text-[var(--text-body)]">{bi(c.notes, c.notes_en, lang)}</p>
                           )}

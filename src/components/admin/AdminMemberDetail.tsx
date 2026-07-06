@@ -45,6 +45,10 @@ interface ChildRecord {
   education: string | null;
   education_en: string | null;
   marital_status: string | null;
+  occupation: string | null;
+  occupation_en: string | null;
+  mobile: string | null;
+  email: string | null;
   photo_url: string | null;
   removed_at: string | null;
 }
@@ -187,6 +191,10 @@ const CHILD_FIELDS: SimpleFieldDef[] = [
   { key: "education", label: "adm_field_education", enCounterpart: "education_en" },
   { key: "education_en", label: "adm_field_education_en" },
   { key: "marital_status", label: "adm_child_marital" },
+  { key: "occupation", label: "adm_field_occupation", enCounterpart: "occupation_en" },
+  { key: "occupation_en", label: "adm_field_occupation_en" },
+  { key: "mobile", label: "adm_spouse_mobile" },
+  { key: "email", label: "adm_field_email" },
   { key: "photo_url", label: "adm_field_photo_url" },
   { key: "gender_confirmed", label: "adm_child_gender_confirmed", type: "checkbox" },
   { key: "notes", label: "adm_field_notes", type: "textarea", maxLength: 1000, enCounterpart: "notes_en" },

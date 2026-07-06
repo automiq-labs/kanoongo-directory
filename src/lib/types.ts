@@ -103,6 +103,10 @@ export interface Child {
   education: string | null;
   education_en: string | null;
   marital_status: string | null;
+  occupation: string | null;
+  occupation_en: string | null;
+  mobile: string | null;
+  email: string | null;
   photo_url: string | null;
   notes: string | null;
   notes_en: string | null;
