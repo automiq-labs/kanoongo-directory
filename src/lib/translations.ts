@@ -424,6 +424,14 @@ const translations = {
   label_relation: { en: "Relation", hi: "संबंध" },
   label_addr: { en: "Address", hi: "पता" },
   label_other_relation: { en: "Relation label", hi: "संबंध का नाम" },
+
+  // Married daughters
+  section_sasural: { en: "Marriage & In-laws (Sasural)", hi: "ससुराल विवरण" },
+  add_sasural: { en: "Add marriage details", hi: "ससुराल विवरण जोड़ें" },
+  label_husband: { en: "Husband", hi: "पति" },
+  label_sasur: { en: "Father-in-law", hi: "ससुर" },
+  label_husband_mobile: { en: "Husband's mobile", hi: "पति का मोबाइल" },
+  label_children_note: { en: "Children", hi: "संतान" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

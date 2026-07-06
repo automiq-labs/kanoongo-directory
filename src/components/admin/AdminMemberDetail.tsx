@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang, type TranslationKey } from "@/lib/translations";
-import type { SpouseRelative } from "@/lib/types";
+import type { SpouseRelative, MarriedDaughter } from "@/lib/types";
 import { bi } from "@/lib/bilingual";
 import { transliteratePhrase } from "@/lib/transliterate";
 
@@ -82,6 +82,8 @@ interface MemberDetail {
   spouses: SpouseRecord[];
   children: ChildRecord[];
   descendant_count: number;
+  married_daughters?: MarriedDaughter[] | null;
+  sasural_details?: MarriedDaughter[] | null;
   father: FatherRef | null;
   tree_children: TreeChild[];
   history: Array<{
@@ -1299,6 +1301,73 @@ export default function AdminMemberDetail({
                   </details>
                 )}
               </div>
+
+              {/* ══════ SECTION C2: MARRIED DAUGHTERS (owned) ════════ */}
+              {detail.married_daughters && detail.married_daughters.length > 0 && (
+                <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
+                  <h3 className="font-display text-base font-semibold text-[var(--maroon)] mb-3">बेटी / बहन — Married daughters (owned)</h3>
+                  {detail.married_daughters.map((d) => {
+                    const dName = bi(d.full_name, d.full_name_en, lang);
+                    const dHusband = bi(d.husband_name, d.husband_name_en, lang);
+                    const dSasur = bi(d.sasur_name, d.sasur_name_en, lang);
+                    const dCity = bi(d.city, d.city_en, lang);
+                    const dEdu = bi(d.education, d.education_en, lang);
+                    const dChildNote = bi(d.children_note, d.children_note_en, lang);
+                    const isRemoved = Boolean(d.removed_at);
+                    return (
+                      <div key={d.md_id} className={`mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5 ${isRemoved ? "opacity-50" : ""}`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-sm font-medium ${isRemoved ? "line-through text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>{dName || "—"}</span>
+                          {d.d_member_id && (
+                            <a href={`/family/${d.d_member_id}`} className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.12)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--gold-deep)] hover:underline">{d.d_member_id}</a>
+                          )}
+                          {dHusband && <span className="text-[11px] text-[var(--muted)]">· पति: {dHusband}</span>}
+                          {dCity && <span className="text-[11px] text-[var(--muted)]">· {dCity}</span>}
+                          {d.mobile && <span className="text-[11px] text-[var(--muted)]">· {d.mobile}</span>}
+                          {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">समीक्षा करें / Review</span>}
+                          {isRemoved && <span className="text-[10px] text-[var(--muted)]">({d.removed_at})</span>}
+                        </div>
+                        {dSasur && <p className="mt-0.5 text-[11px] text-[var(--muted)]">ससुर: {dSasur}</p>}
+                        {dEdu && <p className="text-[11px] text-[var(--muted)]">{dEdu}</p>}
+                        {d.dom && <p className="text-[11px] text-[var(--muted)]">विवाह: {d.dom}</p>}
+                        {dChildNote && <p className="mt-0.5 whitespace-pre-line text-[11px] text-[var(--text-body)]">{dChildNote}</p>}
+                        {d.source_raw && <p className="mt-1 font-mono text-[10px] text-[var(--muted)] break-all">{d.source_raw}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ══════ SECTION C3: SASURAL (linked — daughter view) ══ */}
+              {detail.sasural_details && detail.sasural_details.length > 0 && (
+                <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
+                  <h3 className="font-display text-base font-semibold text-[var(--maroon)] mb-3">{t("section_sasural" as TranslationKey, lang)}</h3>
+                  {detail.sasural_details.map((d) => {
+                    const dHusband = bi(d.husband_name, d.husband_name_en, lang);
+                    const dSasur = bi(d.sasur_name, d.sasur_name_en, lang);
+                    const dCity = bi(d.city, d.city_en, lang);
+                    const dEdu = bi(d.education, d.education_en, lang);
+                    const dChildNote = bi(d.children_note, d.children_note_en, lang);
+                    const isRemoved = Boolean(d.removed_at);
+                    return (
+                      <div key={d.md_id} className={`mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5 ${isRemoved ? "opacity-50" : ""}`}>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-sm font-medium ${isRemoved ? "line-through text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>पति: {dHusband || "—"}</span>
+                          {dCity && <span className="text-[11px] text-[var(--muted)]">· {dCity}</span>}
+                          {d.mobile && <span className="text-[11px] text-[var(--muted)]">· {d.mobile}</span>}
+                          {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">समीक्षा करें / Review</span>}
+                          {isRemoved && <span className="text-[10px] text-[var(--muted)]">({d.removed_at})</span>}
+                        </div>
+                        {dSasur && <p className="mt-0.5 text-[11px] text-[var(--muted)]">ससुर: {dSasur}</p>}
+                        {dEdu && <p className="text-[11px] text-[var(--muted)]">{dEdu}</p>}
+                        {d.dom && <p className="text-[11px] text-[var(--muted)]">विवाह: {d.dom}</p>}
+                        {dChildNote && <p className="mt-0.5 whitespace-pre-line text-[11px] text-[var(--text-body)]">{dChildNote}</p>}
+                        {d.source_raw && <p className="mt-1 font-mono text-[10px] text-[var(--muted)] break-all">{d.source_raw}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* ══════ SECTION D: FAMILY BRANCH ═══════════════════ */}
               <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">

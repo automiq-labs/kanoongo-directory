@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Member, Spouse, Child, type SpouseRelative } from "@/lib/types";
+import { Member, Spouse, Child, type SpouseRelative, type MarriedDaughter } from "@/lib/types";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
@@ -421,27 +421,29 @@ const RELATION_OPTIONS = [
   { code: "other", hi: "अन्य", en: "Other" },
 ] as const;
 
-// Preferred group ordering for display
-const RELATION_SORT_ORDER: Record<string, number> = { "ससुर": 0, "सास": 1, "साला": 2, "साली": 3 };
+// Preferred group ordering by code
+const RELATION_SORT_ORDER: Record<string, number> = {
+  sasur: 0, sas: 1, chacher_sasur: 2, sala: 3, sali: 4, bahnoi: 5, other: 99,
+};
 
 function groupRelatives(relatives: SpouseRelative[], lang: Lang) {
-  const groups = new Map<string, SpouseRelative[]>();
+  const groups = new Map<string, { label: string; members: SpouseRelative[] }>();
   for (const r of relatives) {
-    const label = bi(r.relation_label, r.relation_label_en, lang) || (lang === "en" ? "Other" : "अन्य");
-    if (!groups.has(label)) groups.set(label, []);
-    groups.get(label)!.push(r);
+    const code = r.relation_code || "other";
+    if (!groups.has(code)) {
+      const label = bi(r.relation_label, r.relation_label_en, lang) || (lang === "en" ? "Other" : "अन्य");
+      groups.set(code, { label, members: [] });
+    }
+    groups.get(code)!.members.push(r);
   }
-  // Sort groups by preferred order, then alphabetical
-  return Array.from(groups.entries()).sort(([a], [b]) => {
-    const oa = RELATION_SORT_ORDER[a] ?? 99;
-    const ob = RELATION_SORT_ORDER[b] ?? 99;
-    return oa !== ob ? oa - ob : a.localeCompare(b);
-  });
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => (RELATION_SORT_ORDER[a] ?? 99) - (RELATION_SORT_ORDER[b] ?? 99))
+    .map(([, g]) => [g.label, g.members] as [string, SpouseRelative[]]);
 }
 
 function renderMobiles(mobile: string | null) {
   if (!mobile) return null;
-  const numbers = mobile.split("/").map((n) => n.trim()).filter(Boolean);
+  const numbers = mobile.split(/[,\/]/).map((n) => n.trim()).filter(Boolean);
   return (
     <span className="flex flex-wrap gap-2">
       {numbers.map((num, i) => (
@@ -681,6 +683,190 @@ function SpouseRelativesEditor({
   );
 }
 
+// ── Collapsible note ────────────────────────────────────────────────────────
+
+function CollapsibleNote({ text, label }: { text: string; label: string }) {
+  const [open, setOpen] = useState(false);
+  const isLong = text.length > 120;
+  return (
+    <div className="mt-1">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{label}</p>
+      <p className="mt-0.5 whitespace-pre-line text-[13px] text-[var(--text-body)]">
+        {isLong && !open ? text.slice(0, 120) + "…" : text}
+      </p>
+      {isLong && (
+        <button onClick={() => setOpen(!open)} className="mt-0.5 text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
+          {open ? "▲" : "और देखें / Show more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Sasural editor (daughter's own card) ─────────────────────────────────────
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function SasuralEditor({
+  member, details, lang, onRefresh,
+}: {
+  member: Member; details: MarriedDaughter[]; lang: Lang; onRefresh: () => void;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [addVals, setAddVals] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [addErr, setAddErr] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editVals, setEditVals] = useState<Record<string, string>>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editErr, setEditErr] = useState("");
+  const [removeConfirm, setRemoveConfirm] = useState<string | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+
+  const active = details.filter((d) => !d.removed_at);
+  const hasRecord = active.length > 0;
+
+  function startEdit(d: MarriedDaughter) {
+    setEditingId(d.md_id);
+    setEditErr("");
+    setEditVals({
+      husband_name: d.husband_name || "", husband_name_en: d.husband_name_en || "",
+      sasur_name: d.sasur_name || "", sasur_name_en: d.sasur_name_en || "",
+      city: d.city || "", city_en: d.city_en || "",
+      addr: d.addr || "", addr_en: d.addr_en || "",
+      mobile: d.mobile || "", husband_mobile: d.husband_mobile || "",
+      education: d.education || "", education_en: d.education_en || "",
+      dom: d.dom || "", children_note: d.children_note || "",
+    });
+  }
+
+  async function handleAdd() {
+    if (!member.father_member_id) return;
+    setAddErr("");
+    if (addVals.dom && !DATE_RE.test(addVals.dom)) { setAddErr("YYYY-MM-DD"); return; }
+    setSaving(true);
+    const supabase = createClient();
+    const [husbandHi, sasurHi, cityHi, addrHi] = await Promise.all([
+      addVals.husband_name?.trim() ? transliteratePhrase(addVals.husband_name.trim()) : null,
+      addVals.sasur_name?.trim() ? transliteratePhrase(addVals.sasur_name.trim()) : null,
+      addVals.city?.trim() ? transliteratePhrase(addVals.city.trim()) : null,
+      addVals.addr?.trim() ? transliteratePhrase(addVals.addr.trim()) : null,
+    ]);
+    const fields: Record<string, string | null> = {
+      relation_label: "बेटी/बहन", relation_label_en: "Daughter/Sister",
+      d_member_id: member.member_id,
+      full_name: member.full_name, full_name_en: member.full_name_en,
+    };
+    if (husbandHi || addVals.husband_name?.trim()) fields.husband_name = husbandHi || addVals.husband_name!.trim();
+    if (addVals.husband_name?.trim()) fields.husband_name_en = addVals.husband_name.trim();
+    if (sasurHi || addVals.sasur_name?.trim()) fields.sasur_name = sasurHi || addVals.sasur_name!.trim();
+    if (addVals.sasur_name?.trim()) fields.sasur_name_en = addVals.sasur_name.trim();
+    if (cityHi || addVals.city?.trim()) fields.city = cityHi || addVals.city!.trim();
+    if (addVals.city?.trim()) fields.city_en = addVals.city.trim();
+    if (addrHi || addVals.addr?.trim()) fields.addr = addrHi || addVals.addr!.trim();
+    if (addVals.addr?.trim()) fields.addr_en = addVals.addr.trim();
+    if (addVals.mobile?.trim()) fields.mobile = addVals.mobile.trim();
+    if (addVals.husband_mobile?.trim()) fields.husband_mobile = addVals.husband_mobile.trim();
+    if (addVals.education?.trim()) fields.education = addVals.education.trim();
+    if (addVals.dom?.trim()) fields.dom = addVals.dom.trim();
+    if (addVals.children_note?.trim()) fields.children_note = addVals.children_note.trim();
+    const { error } = await supabase.rpc("add_married_daughter", { p_member_id: member.father_member_id, p_fields: fields });
+    if (error) { setAddErr(error.message); setSaving(false); return; }
+    setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
+  }
+
+  async function handleSaveEdit() {
+    if (!editingId) return;
+    setEditErr("");
+    if (editVals.dom && !DATE_RE.test(editVals.dom)) { setEditErr("YYYY-MM-DD"); return; }
+    setEditSaving(true);
+    const supabase = createClient();
+    const fields: Record<string, string> = {};
+    for (const [k, v] of Object.entries(editVals)) { if (v.trim()) fields[k] = v.trim(); }
+    const { error } = await supabase.rpc("update_married_daughter", { p_md_id: editingId, p_fields: fields });
+    if (error) { setEditErr(error.message); setEditSaving(false); return; }
+    setEditingId(null); setEditSaving(false); onRefresh();
+  }
+
+  async function handleRemove(id: string) {
+    setRemoveLoading(true);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("delete_married_daughter", { p_md_id: id });
+    if (error) console.error("delete_married_daughter error:", error);
+    setRemoveConfirm(null); setRemoveLoading(false); onRefresh();
+  }
+
+  const formFields = (vals: Record<string, string>, setter: (fn: (p: Record<string, string>) => Record<string, string>) => void) => (
+    <div className="space-y-2">
+      <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_husband", lang)}</label><input type="text" value={vals.husband_name || ""} onChange={(e) => setter((p) => ({ ...p, husband_name: e.target.value }))} className={INPUT_CLS_REL} /></div>
+      <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_sasur", lang)}</label><input type="text" value={vals.sasur_name || ""} onChange={(e) => setter((p) => ({ ...p, sasur_name: e.target.value }))} className={INPUT_CLS_REL} /></div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_city", lang)}</label><input type="text" value={vals.city || ""} onChange={(e) => setter((p) => ({ ...p, city: e.target.value }))} className={INPUT_CLS_REL} /></div>
+        <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_addr", lang)}</label><input type="text" value={vals.addr || ""} onChange={(e) => setter((p) => ({ ...p, addr: e.target.value }))} className={INPUT_CLS_REL} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label><input type="text" value={vals.mobile || ""} onChange={(e) => setter((p) => ({ ...p, mobile: e.target.value }))} className={INPUT_CLS_REL} /></div>
+        <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_husband_mobile", lang)}</label><input type="text" value={vals.husband_mobile || ""} onChange={(e) => setter((p) => ({ ...p, husband_mobile: e.target.value }))} className={INPUT_CLS_REL} /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_education", lang)}</label><input type="text" value={vals.education || ""} onChange={(e) => setter((p) => ({ ...p, education: e.target.value }))} className={INPUT_CLS_REL} /></div>
+        <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_dom", lang)}</label><input type="text" placeholder="YYYY-MM-DD" value={vals.dom || ""} onChange={(e) => setter((p) => ({ ...p, dom: e.target.value }))} className={INPUT_CLS_REL} /></div>
+      </div>
+      <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_children_note", lang)}</label><textarea rows={2} value={vals.children_note || ""} onChange={(e) => setter((p) => ({ ...p, children_note: e.target.value }))} className={`${INPUT_CLS_REL} min-h-[60px] resize-y`} /></div>
+    </div>
+  );
+
+  return (
+    <div className="mt-3">
+      {/* Add button — only when no record exists */}
+      {!hasRecord && !showAdd && (
+        <button onClick={() => { setShowAdd(true); setAddVals({}); setAddErr(""); }} className="flex w-full items-center justify-center gap-1.5 rounded-[var(--r)] border border-dashed border-[var(--gold)]/40 py-2.5 text-sm font-medium text-[var(--muted)] hover:bg-[var(--cream-panel)]">
+          ＋ {t("add_sasural", lang)}
+        </button>
+      )}
+      {showAdd && (
+        <div className="mb-3 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-3">
+          {formFields(addVals, setAddVals)}
+          {addErr && <p className="mt-2 text-xs text-[var(--maroon)]">{addErr}</p>}
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => setShowAdd(false)} className="min-h-[36px] flex-1 rounded-[var(--r-sm)] border border-[var(--hairline)] text-xs font-medium text-[var(--muted)]">{t("cancel", lang)}</button>
+            <button onClick={handleAdd} disabled={saving} className="min-h-[36px] flex-1 rounded-[var(--r-sm)] bg-[var(--maroon)] text-xs font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("saving", lang) : t("add_sasural", lang)}</button>
+          </div>
+        </div>
+      )}
+      {/* Existing records — edit + remove */}
+      {active.map((d) => {
+        const dHusband = bi(d.husband_name, d.husband_name_en, lang);
+        return (
+          <div key={d.md_id} className="mb-1.5 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-[var(--maroon-deep)]">{t("label_husband", lang)}: {dHusband || "—"}</p>
+              <div className="flex gap-2">
+                <button onClick={() => editingId === d.md_id ? setEditingId(null) : startEdit(d)} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">{editingId === d.md_id ? t("cancel", lang) : t("edit", lang)}</button>
+                {removeConfirm === d.md_id ? (
+                  <div className="flex gap-1">
+                    <button onClick={() => handleRemove(d.md_id)} disabled={removeLoading} className="text-[11px] font-medium text-[var(--maroon)]">{t("confirm", lang)}</button>
+                    <button onClick={() => setRemoveConfirm(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setRemoveConfirm(d.md_id)} className="text-[11px] text-[var(--muted)] hover:text-[var(--maroon)]">✕</button>
+                )}
+              </div>
+            </div>
+            {editingId === d.md_id && (
+              <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+                {formFields(editVals, setEditVals)}
+                {editErr && <p className="mt-2 text-xs text-[var(--maroon)]">{editErr}</p>}
+                <button onClick={handleSaveEdit} disabled={editSaving} className="mt-2 min-h-[32px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-xs font-medium text-[var(--ivory)] disabled:opacity-50">{editSaving ? t("saving", lang) : t("save", lang)}</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function FamilyCardClient({
@@ -693,6 +879,7 @@ export default function FamilyCardClient({
   userFamilyId,
   userId,
   isOwnCard,
+  sasuralDetails,
 }: {
   member: Member;
   spouses: Spouse[];
@@ -703,6 +890,7 @@ export default function FamilyCardClient({
   userFamilyId: string | null;
   userId: string | null;
   isOwnCard: boolean;
+  sasuralDetails: MarriedDaughter[];
 }) {
   const { lang } = useLang();
   const router = useRouter();
@@ -2314,6 +2502,48 @@ export default function FamilyCardClient({
             </button>
           </div>
           </FadeIn>
+        )}
+
+        {/* ── SASURAL (ससुराल — daughter's own card) ──────────────────── */}
+        {(sasuralDetails.length > 0 || (canEditEffective && m.gender === "F" && m.father_member_id)) && (
+          <>
+            <SectionTitle>
+              🏠 {t("section_sasural", lang)}
+            </SectionTitle>
+            <FadeIn delay={0.25}>
+            <div className="rounded-[var(--r-lg)] border border-[#EFE4CD] bg-[var(--raised)] p-4 shadow-card">
+              {/* View mode — lead with husband, not daughter name */}
+              {sasuralDetails.map((d) => {
+                const dHusband = bi(d.husband_name, d.husband_name_en, lang);
+                const dSasur = bi(d.sasur_name, d.sasur_name_en, lang);
+                const dCity = bi(d.city, d.city_en, lang);
+                const dAddr = bi(d.addr, d.addr_en, lang);
+                const dEdu = bi(d.education, d.education_en, lang);
+                const dOcc = bi(d.occupation, d.occupation_en, lang);
+                const dChildNote = bi(d.children_note, d.children_note_en, lang);
+                return (
+                  <div key={d.md_id} className="border-b border-[var(--hairline)] py-3 first:pt-0 last:border-0">
+                    {dHusband && <p className="font-medium text-[var(--maroon-deep)]">{t("label_husband", lang)}: {dHusband}</p>}
+                    {dSasur && <p className="text-[13px] text-[var(--muted)]">{t("label_sasur", lang)}: {dSasur}</p>}
+                    {dCity && <p className="text-[13px] text-[var(--muted)]">{dCity}</p>}
+                    {dEdu && <p className="text-[13px] text-[var(--muted)]">{t("label_education", lang)}: {dEdu}</p>}
+                    {dOcc && <p className="text-[13px] text-[var(--muted)]">{t("label_occupation", lang)}: {dOcc}</p>}
+                    {d.dom && <p className="text-[13px] text-[var(--muted)]">{t("label_dom", lang)}: {d.dom}</p>}
+                    {dAddr && <p className="text-[12px] text-[var(--muted)]">{dAddr}</p>}
+                    {d.mobile && <p className="mt-0.5 text-[13px]">{renderMobiles(d.mobile)}</p>}
+                    {d.husband_mobile && <p className="mt-0.5 text-[13px] text-[var(--muted)]">{t("label_husband_mobile", lang)}: {renderMobiles(d.husband_mobile)}</p>}
+                    {d.email && <p className="mt-0.5 text-[13px]"><a href={`mailto:${d.email}`} className="text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">{d.email}</a></p>}
+                    {dChildNote && <CollapsibleNote text={dChildNote} label={t("label_children_note", lang)} />}
+                  </div>
+                );
+              })}
+              {/* Editor — only for female members with a father */}
+              {canEditEffective && m.gender === "F" && m.father_member_id && (
+                <SasuralEditor member={m} details={sasuralDetails} lang={lang} onRefresh={() => router.refresh()} />
+              )}
+            </div>
+            </FadeIn>
+          </>
         )}
 
         {/* ── LINEAGE (view only, never editable) ──────────────────────── */}

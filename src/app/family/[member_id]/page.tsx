@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { Member, Spouse, Child } from "@/lib/types";
+import { Member, Spouse, Child, type MarriedDaughter } from "@/lib/types";
 import { notFound } from "next/navigation";
 import FamilyCardClient from "./family-card-client";
 
@@ -21,6 +21,7 @@ interface FamilyCardRpc {
     is_deceased: boolean;
   }[];
   father: { member_id: string; full_name: string; full_name_en: string | null } | null;
+  sasural_details: MarriedDaughter[];
 }
 
 export default async function FamilyCardPage({
@@ -64,6 +65,7 @@ export default async function FamilyCardPage({
       userFamilyId={userFamilyId}
       userId={userId}
       isOwnCard={data.is_own_card}
+      sasuralDetails={data.sasural_details || []}
     />
   );
 }

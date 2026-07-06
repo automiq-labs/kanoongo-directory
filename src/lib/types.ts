@@ -111,3 +111,38 @@ export interface Child {
   notes: string | null;
   notes_en: string | null;
 }
+
+export interface MarriedDaughter {
+  md_id: string;
+  member_id?: string;
+  d_member_id?: string | null;
+  relation_label: string | null;
+  relation_label_en: string | null;
+  full_name: string | null;
+  full_name_en: string | null;
+  husband_name: string | null;
+  husband_name_en: string | null;
+  sasur_name: string | null;
+  sasur_name_en: string | null;
+  addr: string | null;
+  addr_en: string | null;
+  city: string | null;
+  city_en: string | null;
+  mobile: string | null;
+  husband_mobile: string | null;
+  sasur_mobile: string | null;
+  email: string | null;
+  education: string | null;
+  education_en: string | null;
+  occupation: string | null;
+  occupation_en: string | null;
+  dom: string | null;
+  children_note: string | null;
+  children_note_en: string | null;
+  notes: string | null;
+  notes_en: string | null;
+  sort_seq: number | null;
+  needs_review?: boolean | null;
+  source_raw?: string | null;
+  removed_at?: string | null;
+}
