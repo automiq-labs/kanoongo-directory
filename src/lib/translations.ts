@@ -417,6 +417,13 @@ const translations = {
   hist_lineage_expand_hint: { en: "Tap a name to see their descendants", hi: "वंशजों को देखने के लिए नाम पर टैप करें" },
   hist_source: { en: "Source", hi: "स्रोत" },
   hist_photo_section: { en: "The Elders", hi: "पूर्वजन" },
+
+  // Spouse relatives
+  section_wife_family: { en: "Wife's Family", hi: "पत्नी का परिवार" },
+  add_relative: { en: "Add relative", hi: "रिश्तेदार जोड़ें" },
+  label_relation: { en: "Relation", hi: "संबंध" },
+  label_addr: { en: "Address", hi: "पता" },
+  label_other_relation: { en: "Relation label", hi: "संबंध का नाम" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

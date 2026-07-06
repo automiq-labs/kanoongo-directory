@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang, type TranslationKey } from "@/lib/translations";
+import type { SpouseRelative } from "@/lib/types";
 import { bi } from "@/lib/bilingual";
 import { transliteratePhrase } from "@/lib/transliterate";
 
@@ -30,6 +31,7 @@ interface SpouseRecord {
   email: string | null;
   photo_url: string | null;
   removed_at: string | null;
+  relatives?: SpouseRelative[] | null;
 }
 
 interface ChildRecord {
@@ -1086,6 +1088,29 @@ export default function AdminMemberDetail({
                           </button>
                           {spouseMsg && <p className={`text-xs ${spouseMsg === t("adm_saved", lang) ? "text-green-700" : "text-[var(--maroon)]"}`}>{spouseMsg}</p>}
                         </div>
+                      </div>
+                    )}
+                    {/* Admin read-only relatives */}
+                    {sp.relatives && sp.relatives.length > 0 && (
+                      <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family" as TranslationKey, lang)}</p>
+                        {sp.relatives.map((r) => {
+                          const rName = bi(r.full_name, r.full_name_en, lang);
+                          const rLabel = bi(r.relation_label, r.relation_label_en, lang) || "—";
+                          const rCity = bi(r.city, r.city_en, lang);
+                          const isRemoved = Boolean(r.removed_at);
+                          return (
+                            <div key={r.relative_id} className={`mb-1 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-white p-2 ${isRemoved ? "opacity-50" : ""}`}>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-[var(--gold-deep)]">{rLabel}</span>
+                                <span className="text-sm text-[var(--maroon-deep)]">{rName || "—"}</span>
+                                {rCity && <span className="text-[11px] text-[var(--muted)]">· {rCity}</span>}
+                                {r.mobile && <span className="text-[11px] text-[var(--muted)]">· {r.mobile}</span>}
+                                {isRemoved && <span className="rounded-[var(--r-pill)] bg-[rgba(110,30,42,0.08)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--maroon)]">{t("adm_removed_label" as TranslationKey, lang)}</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

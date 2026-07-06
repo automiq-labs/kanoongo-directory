@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Member, Spouse, Child } from "@/lib/types";
+import { Member, Spouse, Child, type SpouseRelative } from "@/lib/types";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
@@ -395,6 +395,282 @@ function buildBilingualPayload(
   }
 
   return payload;
+}
+
+// ── Relation code/label mapping ─────────────────────────────────────────────
+
+const RELATION_OPTIONS = [
+  { code: "sasur", hi: "ससुर", en: "Father-in-law" },
+  { code: "sas", hi: "सास", en: "Mother-in-law" },
+  { code: "sala", hi: "साला", en: "Brother-in-law" },
+  { code: "sali", hi: "साली", en: "Sister-in-law" },
+  { code: "chacher_sasur", hi: "चचेर ससुर", en: "Father-in-law's cousin" },
+  { code: "bahnoi", hi: "बहनोई", en: "Sister's husband" },
+  { code: "mother", hi: "माता", en: "Mother" },
+  { code: "father", hi: "पिता", en: "Father" },
+  { code: "brother", hi: "भाई", en: "Brother" },
+  { code: "sister", hi: "बहन", en: "Sister" },
+  { code: "other", hi: "अन्य", en: "Other" },
+] as const;
+
+// Preferred group ordering for display
+const RELATION_SORT_ORDER: Record<string, number> = { "ससुर": 0, "सास": 1, "साला": 2, "साली": 3 };
+
+function groupRelatives(relatives: SpouseRelative[], lang: Lang) {
+  const groups = new Map<string, SpouseRelative[]>();
+  for (const r of relatives) {
+    const label = bi(r.relation_label, r.relation_label_en, lang) || (lang === "en" ? "Other" : "अन्य");
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label)!.push(r);
+  }
+  // Sort groups by preferred order, then alphabetical
+  return Array.from(groups.entries()).sort(([a], [b]) => {
+    const oa = RELATION_SORT_ORDER[a] ?? 99;
+    const ob = RELATION_SORT_ORDER[b] ?? 99;
+    return oa !== ob ? oa - ob : a.localeCompare(b);
+  });
+}
+
+function renderMobiles(mobile: string | null) {
+  if (!mobile) return null;
+  const numbers = mobile.split("/").map((n) => n.trim()).filter(Boolean);
+  return (
+    <span className="flex flex-wrap gap-2">
+      {numbers.map((num, i) => (
+        <a key={i} href={`tel:${num}`} className="text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">
+          {num}
+        </a>
+      ))}
+    </span>
+  );
+}
+
+// ── Spouse relatives editor ─────────────────────────────────────────────────
+
+const INPUT_CLS_REL = "min-h-[40px] w-full rounded-[var(--r-sm)] border border-[#ECE0C8] bg-white px-3 py-1.5 text-sm text-[var(--maroon-deep)] placeholder-[var(--muted)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none";
+
+function RelationDropdown({
+  value, onChange, vals, setter, lang,
+}: {
+  value: string;
+  onChange: (code: string) => void;
+  vals: Record<string, string>;
+  setter: (fn: (p: Record<string, string>) => Record<string, string>) => void;
+  lang: Lang;
+}) {
+  function setFromCode(code: string) {
+    const opt = RELATION_OPTIONS.find((o) => o.code === code);
+    setter((p) => ({
+      ...p,
+      relation_code: code,
+      relation_label: opt ? opt.hi : p.relation_label || "",
+      relation_label_en: opt ? opt.en : p.relation_label_en || "",
+    }));
+  }
+  return (
+    <div>
+      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_relation", lang)}</label>
+      <select value={value} onChange={(e) => { onChange(e.target.value); setFromCode(e.target.value); }} className={INPUT_CLS_REL}>
+        <option value="">— {t("label_relation", lang)} —</option>
+        {RELATION_OPTIONS.map((o) => <option key={o.code} value={o.code}>{lang === "en" ? `${o.en} (${o.hi})` : `${o.hi} (${o.en})`}</option>)}
+      </select>
+      {value === "other" && (
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <input type="text" placeholder={lang === "en" ? "Label (Hindi)" : "नाम (हिंदी)"} value={vals.relation_label || ""} onChange={(e) => setter((p) => ({ ...p, relation_label: e.target.value }))} className={INPUT_CLS_REL} />
+          <input type="text" placeholder={lang === "en" ? "Label (English)" : "नाम (अंग्रेज़ी)"} value={vals.relation_label_en || ""} onChange={(e) => setter((p) => ({ ...p, relation_label_en: e.target.value }))} className={INPUT_CLS_REL} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpouseRelativesEditor({
+  spouseId,
+  relatives,
+  lang,
+  onRefresh,
+}: {
+  spouseId: string;
+  relatives: SpouseRelative[];
+  lang: Lang;
+  onRefresh: () => void;
+}) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [addVals, setAddVals] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editVals, setEditVals] = useState<Record<string, string>>({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [removeConfirm, setRemoveConfirm] = useState<string | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+
+  const active = relatives.filter((r) => !r.removed_at);
+
+  function startEdit(r: SpouseRelative) {
+    setEditingId(r.relative_id);
+    setEditVals({
+      relation_code: r.relation_code || "",
+      full_name: r.full_name || "",
+      full_name_en: r.full_name_en || "",
+      city: r.city || "",
+      city_en: r.city_en || "",
+      addr: r.addr || "",
+      addr_en: r.addr_en || "",
+      mobile: r.mobile || "",
+      relation_label: r.relation_label || "",
+      relation_label_en: r.relation_label_en || "",
+    });
+  }
+
+  async function handleAdd() {
+    setSaving(true);
+    const supabase = createClient();
+    const nameEn = addVals.full_name_en?.trim() || addVals.full_name?.trim() || "";
+    const [nameHi, cityHi, addrHi] = await Promise.all([
+      nameEn ? transliteratePhrase(nameEn) : null,
+      addVals.city?.trim() ? transliteratePhrase(addVals.city.trim()) : null,
+      addVals.addr?.trim() ? transliteratePhrase(addVals.addr.trim()) : null,
+    ]);
+    await supabase.rpc("add_spouse_relative", {
+      p_spouse_id: spouseId,
+      p_relation_code: addVals.relation_code || "other",
+      p_relation_label: addVals.relation_label || null,
+      p_relation_label_en: addVals.relation_label_en || null,
+      p_full_name: nameHi || nameEn || null,
+      p_full_name_en: nameEn || null,
+      p_addr: addrHi || addVals.addr?.trim() || null,
+      p_addr_en: addVals.addr?.trim() || null,
+      p_city: cityHi || addVals.city?.trim() || null,
+      p_city_en: addVals.city?.trim() || null,
+      p_mobile: addVals.mobile?.trim() || null,
+    });
+    setShowAdd(false);
+    setAddVals({});
+    setSaving(false);
+    onRefresh();
+  }
+
+  async function handleSaveEdit() {
+    if (!editingId) return;
+    setEditSaving(true);
+    const supabase = createClient();
+    const nameEn = editVals.full_name_en?.trim() || "";
+    const [nameHi, cityHi, addrHi] = await Promise.all([
+      nameEn && !editVals.full_name?.trim() ? transliteratePhrase(nameEn) : null,
+      editVals.city_en?.trim() && !editVals.city?.trim() ? transliteratePhrase(editVals.city_en.trim()) : null,
+      editVals.addr_en?.trim() && !editVals.addr?.trim() ? transliteratePhrase(editVals.addr_en.trim()) : null,
+    ]);
+    const fields: Record<string, string | null> = {};
+    if (editVals.relation_code) fields.relation_code = editVals.relation_code;
+    if (editVals.relation_label) fields.relation_label = editVals.relation_label;
+    if (editVals.relation_label_en) fields.relation_label_en = editVals.relation_label_en;
+    if (nameEn) fields.full_name_en = nameEn;
+    if (nameHi || editVals.full_name?.trim()) fields.full_name = nameHi || editVals.full_name.trim();
+    if (editVals.city?.trim() || cityHi) fields.city = cityHi || editVals.city.trim();
+    if (editVals.city_en?.trim()) fields.city_en = editVals.city_en.trim();
+    if (editVals.addr?.trim() || addrHi) fields.addr = addrHi || editVals.addr.trim();
+    if (editVals.addr_en?.trim()) fields.addr_en = editVals.addr_en.trim();
+    if (editVals.mobile?.trim()) fields.mobile = editVals.mobile.trim();
+    if (Object.keys(fields).length > 0) {
+      await supabase.rpc("update_spouse_relative", { p_relative_id: editingId, p_fields: fields });
+    }
+    setEditingId(null);
+    setEditSaving(false);
+    onRefresh();
+  }
+
+  async function handleRemove(id: string) {
+    setRemoveLoading(true);
+    const supabase = createClient();
+    await supabase.rpc("delete_spouse_relative", { p_relative_id: id });
+    setRemoveConfirm(null);
+    setRemoveLoading(false);
+    onRefresh();
+  }
+
+  return (
+    <div className="mt-3 border-t border-[var(--hairline)] pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family", lang)}</p>
+        <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); }} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
+          {showAdd ? t("cancel", lang) : `＋ ${t("add_relative", lang)}`}
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div className="mb-3 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-3 space-y-2">
+          <RelationDropdown value={addVals.relation_code || ""} onChange={(c) => setAddVals((p) => ({ ...p, relation_code: c }))} vals={addVals} setter={setAddVals} lang={lang} />
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_full_name", lang)}</label>
+            <input type="text" value={addVals.full_name || ""} onChange={(e) => setAddVals((p) => ({ ...p, full_name: e.target.value }))} className={INPUT_CLS_REL} />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_city", lang)}</label>
+            <input type="text" value={addVals.city || ""} onChange={(e) => setAddVals((p) => ({ ...p, city: e.target.value }))} className={INPUT_CLS_REL} />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_addr", lang)}</label>
+            <input type="text" value={addVals.addr || ""} onChange={(e) => setAddVals((p) => ({ ...p, addr: e.target.value }))} className={INPUT_CLS_REL} />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label>
+            <input type="text" value={addVals.mobile || ""} onChange={(e) => setAddVals((p) => ({ ...p, mobile: e.target.value }))} className={INPUT_CLS_REL} />
+          </div>
+          <button onClick={handleAdd} disabled={saving || !addVals.full_name?.trim()} className="min-h-[36px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-4 py-1.5 text-xs font-medium text-[var(--ivory)] disabled:opacity-50">
+            {saving ? t("saving", lang) : t("add_relative", lang)}
+          </button>
+        </div>
+      )}
+
+      {/* Existing relatives */}
+      {active.map((r) => {
+        const rName = bi(r.full_name, r.full_name_en, lang);
+        const rLabel = bi(r.relation_label, r.relation_label_en, lang) || "—";
+        return (
+          <div key={r.relative_id} className="mb-1.5 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-[var(--maroon-deep)]">{rName || "—"}</p>
+                <p className="text-[11px] text-[var(--muted)]">{rLabel}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => editingId === r.relative_id ? setEditingId(null) : startEdit(r)} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
+                  {editingId === r.relative_id ? t("cancel", lang) : t("edit", lang)}
+                </button>
+                {removeConfirm === r.relative_id ? (
+                  <div className="flex gap-1">
+                    <button onClick={() => handleRemove(r.relative_id)} disabled={removeLoading} className="text-[11px] font-medium text-[var(--maroon)]">{t("confirm", lang)}</button>
+                    <button onClick={() => setRemoveConfirm(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setRemoveConfirm(r.relative_id)} className="text-[11px] text-[var(--muted)] hover:text-[var(--maroon)]">✕</button>
+                )}
+              </div>
+            </div>
+            {editingId === r.relative_id && (
+              <div className="mt-2 border-t border-[var(--hairline)] pt-2 space-y-2">
+                <RelationDropdown value={editVals.relation_code || ""} onChange={(c) => setEditVals((p) => ({ ...p, relation_code: c }))} vals={editVals} setter={setEditVals} lang={lang} />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_full_name", lang)} (Hi)</label><input type="text" value={editVals.full_name || ""} onChange={(e) => setEditVals((p) => ({ ...p, full_name: e.target.value }))} className={INPUT_CLS_REL} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_full_name", lang)} (En)</label><input type="text" value={editVals.full_name_en || ""} onChange={(e) => setEditVals((p) => ({ ...p, full_name_en: e.target.value }))} className={INPUT_CLS_REL} /></div>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_city", lang)}</label><input type="text" value={editVals.city || ""} onChange={(e) => setEditVals((p) => ({ ...p, city: e.target.value }))} className={INPUT_CLS_REL} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_addr", lang)}</label><input type="text" value={editVals.addr || ""} onChange={(e) => setEditVals((p) => ({ ...p, addr: e.target.value }))} className={INPUT_CLS_REL} /></div>
+                </div>
+                <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label><input type="text" value={editVals.mobile || ""} onChange={(e) => setEditVals((p) => ({ ...p, mobile: e.target.value }))} className={INPUT_CLS_REL} /></div>
+                <button onClick={handleSaveEdit} disabled={editSaving} className="min-h-[32px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-xs font-medium text-[var(--ivory)] disabled:opacity-50">
+                  {editSaving ? t("saving", lang) : t("save", lang)}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {active.length === 0 && !showAdd && <p className="text-xs text-[var(--muted)]">—</p>}
+    </div>
+  );
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -1535,6 +1811,9 @@ export default function FamilyCardClient({
                           {(lang === "en" ? edits.notes_en : edits.notes).length} / 1000
                         </p>
                       </div>
+                      {/* Spouse relatives — edit mode */}
+                      {canEditEffective && <SpouseRelativesEditor spouseId={s.spouse_id} relatives={s.relatives || []} lang={lang} onRefresh={() => router.refresh()} />}
+
                       {/* Remove spouse */}
                       {canEditEffective && (
                         removeSpouseConfirm === s.spouse_id ? (
@@ -1582,6 +1861,35 @@ export default function FamilyCardClient({
                         <div className="border-b border-[var(--hairline)] py-2 last:border-0">
                           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</p>
                           <p className="whitespace-pre-line text-sm italic text-[var(--text-body)]">{bi(s.notes, s.notes_en, lang)}</p>
+                        </div>
+                      )}
+                      {/* Spouse relatives — view mode */}
+                      {s.relatives && s.relatives.length > 0 && (
+                        <div className="mt-3 border-t border-[var(--hairline)] pt-3">
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family", lang)}</p>
+                          {groupRelatives(s.relatives, lang).map(([groupLabel, members]) => (
+                            <div key={groupLabel} className="mb-2">
+                              <p className="mb-1 text-[12px] font-semibold text-[var(--gold-deep)]">{groupLabel}</p>
+                              {members.map((r) => {
+                                const rName = bi(r.full_name, r.full_name_en, lang);
+                                const rCity = bi(r.city, r.city_en, lang);
+                                const rOccupation = bi(r.occupation, r.occupation_en, lang);
+                                const rAddr = bi(r.addr, r.addr_en, lang);
+                                return (
+                                  <div key={r.relative_id} className="mb-1.5 py-1 last:mb-0">
+                                    {rName && <p className="text-sm font-medium text-[var(--maroon-deep)]">{rName}</p>}
+                                    {(rCity || rOccupation) && (
+                                      <p className="text-[13px] text-[var(--muted)]">
+                                        {[rCity, rOccupation].filter(Boolean).join(" · ")}
+                                      </p>
+                                    )}
+                                    {rAddr && <p className="text-[12px] text-[var(--muted)]">{rAddr}</p>}
+                                    {r.mobile && <p className="mt-0.5 text-[13px]">{renderMobiles(r.mobile)}</p>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </>

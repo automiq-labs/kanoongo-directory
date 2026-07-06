@@ -48,6 +48,27 @@ export interface Member {
   edit_blocked: boolean;
 }
 
+export interface SpouseRelative {
+  relative_id: string;
+  relation_code: string;
+  relation_label: string | null;
+  relation_label_en: string | null;
+  full_name: string | null;
+  full_name_en: string | null;
+  addr: string | null;
+  addr_en: string | null;
+  city: string | null;
+  city_en: string | null;
+  mobile: string | null;
+  occupation: string | null;
+  occupation_en: string | null;
+  notes: string | null;
+  notes_en: string | null;
+  source_raw?: string | null;
+  sort_seq: number | null;
+  removed_at?: string | null;
+}
+
 export interface Spouse {
   spouse_id: string;
   member_id: string;
@@ -68,6 +89,7 @@ export interface Spouse {
   photo_url: string | null;
   notes: string | null;
   notes_en: string | null;
+  relatives?: SpouseRelative[] | null;
 }
 
 export interface Child {
