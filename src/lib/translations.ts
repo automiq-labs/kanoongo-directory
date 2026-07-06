@@ -406,6 +406,17 @@ const translations = {
   adm_edit_blocked: { en: "Editing blocked", hi: "संपादन बंद" },
   adm_edit_blocked_desc: { en: "This member cannot edit their family's details", hi: "इनके परिवार का संपादन बंद है" },
   edit_blocked_banner: { en: "Editing is currently disabled — please contact the admin", hi: "संपादन अभी बंद है — कृपया व्यवस्थापक से संपर्क करें" },
+
+  // Navigation (More menu + History)
+  nav_history: { en: "History", hi: "इतिहास" },
+  nav_more: { en: "More", hi: "अधिक" },
+  nav_profile: { en: "Profile", hi: "प्रोफ़ाइल" },
+
+  // History page
+  hist_title: { en: "Family History", hi: "परिवार का इतिहास" },
+  hist_lineage_expand_hint: { en: "Tap a name to see their descendants", hi: "वंशजों को देखने के लिए नाम पर टैप करें" },
+  hist_source: { en: "Source", hi: "स्रोत" },
+  hist_photo_section: { en: "The Elders", hi: "पूर्वजन" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;
