@@ -432,6 +432,12 @@ const translations = {
   label_sasur: { en: "Father-in-law", hi: "ससुर" },
   label_husband_mobile: { en: "Husband's mobile", hi: "पति का मोबाइल" },
   label_children_note: { en: "Children", hi: "संतान" },
+
+  // Admin login
+  adm_login_title: { en: "Admin Portal", hi: "प्रशासक पोर्टल" },
+  adm_login_subtitle: { en: "Sign in to the admin portal", hi: "प्रशासक पोर्टल में साइन इन करें" },
+  adm_login_not_admin: { en: "This account is not an administrator.", hi: "यह खाता प्रशासक नहीं है।" },
+  adm_login_member_portal: { en: "Member portal", hi: "सदस्य पोर्टल" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

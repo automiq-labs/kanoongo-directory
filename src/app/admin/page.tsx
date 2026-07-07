@@ -6,10 +6,10 @@ export default async function AdminPage() {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) redirect("/admin/login");
 
   const { data: isAdmin } = await supabase.rpc("is_admin");
-  if (!isAdmin) redirect("/");
+  if (!isAdmin) redirect("/admin/login?error=not_admin");
 
   return <AdminClient />;
 }
