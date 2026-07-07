@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useLang } from "@/lib/language-context";
@@ -71,6 +72,17 @@ export default function LoginPage() {
         <p className="fade-up-d mt-2 text-sm" style={{ color: "rgba(201,150,46,0.55)" }}>
           {t("login_subtitle", lang)}
         </p>
+        {/* Archival family photo — mat-framed */}
+        <div className="fade-up-d mt-8 w-full max-w-[380px]">
+          <div className="rounded-md border border-[var(--gold)]/50 bg-[#F4E3C1]/10 p-[6px] shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+            <div className="overflow-hidden rounded-sm" style={{ filter: "sepia(0.2) saturate(0.85)" }}>
+              <Image src="/login-family-photo.jpg" alt={t("login_photo_caption", lang)} width={1108} height={856} className="w-full" priority />
+            </div>
+          </div>
+          <p className="mt-2.5 text-center text-[11px] italic" style={{ color: "rgba(201,150,46,0.45)" }}>
+            {t("login_photo_caption", lang)}
+          </p>
+        </div>
       </div>
 
       {/* ── RIGHT PANEL / MOBILE COLUMN ───────────────────────────── */}
@@ -100,6 +112,14 @@ export default function LoginPage() {
               <p className="mt-1.5 text-sm text-[var(--muted)]">
                 {t("login_subtitle", lang)}
               </p>
+              {/* Archival photo — compact, visible on all phones */}
+              <div className="mx-auto mt-4 w-[75%] max-w-[260px] md:hidden">
+                <div className="rounded border border-[var(--gold)]/40 bg-[#F4E3C1]/10 p-[4px] shadow-[0_2px_12px_rgba(0,0,0,0.15)]">
+                  <div className="overflow-hidden rounded-sm" style={{ filter: "sepia(0.2) saturate(0.85)", maxHeight: "150px" }}>
+                    <Image src="/login-family-photo.jpg" alt={t("login_photo_caption", lang)} width={1108} height={856} className="w-full object-cover object-top" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* ── FORM CARD ──────────────────────────────────────── */}

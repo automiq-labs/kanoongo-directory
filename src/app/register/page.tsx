@@ -8,6 +8,7 @@ import { useLang } from "@/lib/language-context";
 import { t } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
 import LanguageToggle from "@/app/language-toggle";
+import Image from "next/image";
 import { Crest } from "@/components/Crest";
 import { MakerMark } from "@/components/MakerMark";
 import GotraSelect from "@/components/form/GotraSelect";
@@ -510,6 +511,17 @@ export default function RegisterPage() {
           {t("app_title", lang)}
         </p>
         <StepDots current={stepIndex} total={5} direction="vertical" />
+        {/* Archival family photo — mat-framed */}
+        <div className="mt-8 w-full max-w-[340px]">
+          <div className="rounded-md border border-[var(--gold)]/50 bg-[#F4E3C1]/10 p-[6px] shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+            <div className="overflow-hidden rounded-sm" style={{ filter: "sepia(0.2) saturate(0.85)" }}>
+              <Image src="/login-family-photo.jpg" alt={t("login_photo_caption", lang)} width={1108} height={856} className="w-full" />
+            </div>
+          </div>
+          <p className="mt-2.5 text-center text-[11px] italic" style={{ color: "rgba(201,150,46,0.45)" }}>
+            {t("login_photo_caption", lang)}
+          </p>
+        </div>
       </div>
 
       {/* ── RIGHT PANEL / MOBILE COLUMN ───────────────────────────── */}
@@ -544,6 +556,14 @@ export default function RegisterPage() {
           <h1 className="mb-1 font-display text-xl font-semibold text-[var(--maroon)]">
             {t("reg_title", lang)}
           </h1>
+          {/* Archival photo — compact, visible on all phones */}
+          <div className="mx-auto mt-3 w-[70%] max-w-[240px] md:hidden">
+            <div className="rounded border border-[var(--gold)]/40 bg-[#F4E3C1]/10 p-[3px] shadow-[0_2px_12px_rgba(0,0,0,0.15)]">
+              <div className="overflow-hidden rounded-sm" style={{ filter: "sepia(0.2) saturate(0.85)", maxHeight: "120px" }}>
+                <Image src="/login-family-photo.jpg" alt={t("login_photo_caption", lang)} width={1108} height={856} className="w-full object-cover object-top" />
+              </div>
+            </div>
+          </div>
           <div className="mt-3">
             <StepDots current={stepIndex} total={5} />
           </div>
