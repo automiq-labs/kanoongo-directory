@@ -562,28 +562,31 @@ function SpouseRelativesEditor({
 
   async function handleSaveEdit() {
     if (!editingId) return;
+    // Find original record to compute dirty fields
+    const original = active.find((r) => r.relative_id === editingId);
+    const dirty: Record<string, string | null> = {};
+    for (const [k, v] of Object.entries(editVals)) {
+      const origVal = (original as unknown as Record<string, string | null>)?.[k] ?? "";
+      const newVal = v.trim();
+      if (newVal !== (origVal || "").toString().trim()) {
+        dirty[k] = newVal || null; // empty string → null (deliberate clear)
+      }
+    }
+    if (Object.keys(dirty).length === 0) { setEditingId(null); return; } // nothing changed
     setEditSaving(true);
     const supabase = createClient();
-    const nameEn = editVals.full_name_en?.trim() || "";
+    // Auto-transliterate Hindi fields if English changed and Hindi wasn't touched
+    const nameEn = dirty.full_name_en;
     const [nameHi, cityHi, addrHi] = await Promise.all([
-      nameEn && !editVals.full_name?.trim() ? transliteratePhrase(nameEn) : null,
-      editVals.city_en?.trim() && !editVals.city?.trim() ? transliteratePhrase(editVals.city_en.trim()) : null,
-      editVals.addr_en?.trim() && !editVals.addr?.trim() ? transliteratePhrase(editVals.addr_en.trim()) : null,
+      nameEn && !dirty.full_name && !editVals.full_name?.trim() ? transliteratePhrase(String(nameEn)) : null,
+      dirty.city_en && !dirty.city && !editVals.city?.trim() ? transliteratePhrase(String(dirty.city_en)) : null,
+      dirty.addr_en && !dirty.addr && !editVals.addr?.trim() ? transliteratePhrase(String(dirty.addr_en)) : null,
     ]);
-    const fields: Record<string, string | null> = {};
-    if (editVals.relation_code) fields.relation_code = editVals.relation_code;
-    if (editVals.relation_label) fields.relation_label = editVals.relation_label;
-    if (editVals.relation_label_en) fields.relation_label_en = editVals.relation_label_en;
-    if (nameEn) fields.full_name_en = nameEn;
-    if (nameHi || editVals.full_name?.trim()) fields.full_name = nameHi || editVals.full_name.trim();
-    if (editVals.city?.trim() || cityHi) fields.city = cityHi || editVals.city.trim();
-    if (editVals.city_en?.trim()) fields.city_en = editVals.city_en.trim();
-    if (editVals.addr?.trim() || addrHi) fields.addr = addrHi || editVals.addr.trim();
-    if (editVals.addr_en?.trim()) fields.addr_en = editVals.addr_en.trim();
-    if (editVals.mobile?.trim()) fields.mobile = editVals.mobile.trim();
-    if (Object.keys(fields).length > 0) {
-      await supabase.rpc("update_spouse_relative", { p_relative_id: editingId, p_fields: fields });
-    }
+    if (nameHi) dirty.full_name = nameHi;
+    if (cityHi) dirty.city = cityHi;
+    if (addrHi) dirty.addr = addrHi;
+    const { error } = await supabase.rpc("update_spouse_relative", { p_relative_id: editingId, p_fields: dirty });
+    if (error) console.error("update_spouse_relative error:", error);
     setEditingId(null);
     setEditSaving(false);
     onRefresh();
@@ -779,10 +782,19 @@ function SasuralEditor({
     if (!editingId) return;
     setEditErr("");
     if (editVals.dom && !DATE_RE.test(editVals.dom)) { setEditErr("YYYY-MM-DD"); return; }
+    // Find the original record to compute dirty fields only
+    const original = details.find((d) => d.md_id === editingId);
+    const fields: Record<string, string | null> = {};
+    for (const [k, v] of Object.entries(editVals)) {
+      const origVal = (original as unknown as Record<string, string | null>)?.[k] ?? "";
+      const newVal = v.trim();
+      if (newVal !== (origVal || "").toString().trim()) {
+        fields[k] = newVal || null; // empty string → null (deliberate clear)
+      }
+    }
+    if (Object.keys(fields).length === 0) { setEditingId(null); return; } // nothing changed
     setEditSaving(true);
     const supabase = createClient();
-    const fields: Record<string, string> = {};
-    for (const [k, v] of Object.entries(editVals)) { if (v.trim()) fields[k] = v.trim(); }
     const { error } = await supabase.rpc("update_married_daughter", { p_md_id: editingId, p_fields: fields });
     if (error) { setEditErr(error.message); setEditSaving(false); return; }
     setEditingId(null); setEditSaving(false); onRefresh();

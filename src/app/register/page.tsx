@@ -346,33 +346,40 @@ export default function RegisterPage() {
 
     setCreating(true);
     try {
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-      });
+      // Check if already signed in (resumed registration after failed complete_registration)
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      let session = existingSession;
 
-      if (signUpError) {
-        setError(signUpError.message);
-        setCreating(false);
-        return;
-      }
-
-      let session = signUpData.session;
       if (!session) {
-        const { data: signInData, error: signInError } =
-          await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (signInError) {
+        // Not signed in — create account
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+
+        if (signUpError) {
+          setError(signUpError.message);
+          setCreating(false);
+          return;
+        }
+
+        session = signUpData.session;
+        if (!session) {
+          const { data: signInData, error: signInError } =
+            await supabase.auth.signInWithPassword({ email: email.trim(), password });
+          if (signInError) {
+            setEmailConfirmNeeded(true);
+            setCreating(false);
+            return;
+          }
+          session = signInData.session;
+        }
+
+        if (!session) {
           setEmailConfirmNeeded(true);
           setCreating(false);
           return;
         }
-        session = signInData.session;
-      }
-
-      if (!session) {
-        setEmailConfirmNeeded(true);
-        setCreating(false);
-        return;
       }
 
       const nameTrimmed = fullName.trim();
