@@ -441,6 +441,13 @@ function groupRelatives(relatives: SpouseRelative[], lang: Lang) {
     .map(([, g]) => [g.label, g.members] as [string, SpouseRelative[]]);
 }
 
+/** Map dedup guard error codes to friendly bilingual messages */
+function mapDedupError(msg: string, lang: Lang): string | null {
+  if (msg.includes("child_already_member")) return t("err_child_already_member", lang);
+  if (msg.includes("duplicate_child") || msg.includes("duplicate_spouse") || msg.includes("duplicate_daughter") || msg.includes("duplicate_relative")) return t("err_duplicate_entry", lang);
+  return null;
+}
+
 function renderMobiles(mobile: string | null) {
   if (!mobile) return null;
   const numbers = mobile.split(/[,\/]/).map((n) => n.trim()).filter(Boolean);
@@ -508,6 +515,7 @@ function SpouseRelativesEditor({
   const [showAdd, setShowAdd] = useState(false);
   const [addVals, setAddVals] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [addErr, setAddErr] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVals, setEditVals] = useState<Record<string, string>>({});
   const [editSaving, setEditSaving] = useState(false);
@@ -541,7 +549,7 @@ function SpouseRelativesEditor({
       addVals.city?.trim() ? transliteratePhrase(addVals.city.trim()) : null,
       addVals.addr?.trim() ? transliteratePhrase(addVals.addr.trim()) : null,
     ]);
-    await supabase.rpc("add_spouse_relative", {
+    const { error } = await supabase.rpc("add_spouse_relative", {
       p_spouse_id: spouseId,
       p_relation_code: addVals.relation_code || "other",
       p_relation_label: addVals.relation_label || null,
@@ -554,6 +562,7 @@ function SpouseRelativesEditor({
       p_city_en: addVals.city?.trim() || null,
       p_mobile: addVals.mobile?.trim() || null,
     });
+    if (error) { setAddErr(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setShowAdd(false);
     setAddVals({});
     setSaving(false);
@@ -605,7 +614,7 @@ function SpouseRelativesEditor({
     <div className="mt-3 border-t border-[var(--hairline)] pt-3">
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family", lang)}</p>
-        <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); }} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
+        <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); setAddErr(""); }} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
           {showAdd ? t("cancel", lang) : `＋ ${t("add_relative", lang)}`}
         </button>
       </div>
@@ -630,6 +639,7 @@ function SpouseRelativesEditor({
             <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label>
             <input type="text" value={addVals.mobile || ""} onChange={(e) => setAddVals((p) => ({ ...p, mobile: e.target.value }))} className={INPUT_CLS_REL} />
           </div>
+          {addErr && <p className="text-xs text-[var(--maroon)]">{addErr}</p>}
           <button onClick={handleAdd} disabled={saving || !addVals.full_name?.trim()} className="min-h-[36px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-4 py-1.5 text-xs font-medium text-[var(--ivory)] disabled:opacity-50">
             {saving ? t("saving", lang) : t("add_relative", lang)}
           </button>
@@ -774,7 +784,7 @@ function SasuralEditor({
     if (addVals.dom?.trim()) fields.dom = addVals.dom.trim();
     if (addVals.children_note?.trim()) fields.children_note = addVals.children_note.trim();
     const { error } = await supabase.rpc("add_married_daughter", { p_member_id: member.father_member_id, p_fields: fields });
-    if (error) { setAddErr(error.message); setSaving(false); return; }
+    if (error) { setAddErr(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
   }
 
@@ -1035,7 +1045,7 @@ export default function FamilyCardClient({
 
       if (error) {
         console.error("add_spouse RPC failed:", error);
-        setToast({ type: "error", msg: t("save_error", lang) });
+        setToast({ type: "error", msg: mapDedupError(error.message, lang) || t("save_error", lang) });
         return;
       }
       router.refresh();
@@ -1084,7 +1094,7 @@ export default function FamilyCardClient({
 
       if (error) {
         console.error("add_children_bulk RPC failed:", error);
-        setToast({ type: "error", msg: t("save_error", lang) });
+        setToast({ type: "error", msg: mapDedupError(error.message, lang) || t("save_error", lang) });
         setAddChildLoading(false);
         return;
       }
@@ -1159,7 +1169,7 @@ export default function FamilyCardClient({
 
       if (error) {
         console.error("add_spouse (wife) RPC failed:", error);
-        setToast({ type: "error", msg: t("save_error", lang) });
+        setToast({ type: "error", msg: mapDedupError(error.message, lang) || t("save_error", lang) });
         setAddWifeLoading(false);
         return;
       }

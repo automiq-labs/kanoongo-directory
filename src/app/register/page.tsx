@@ -400,6 +400,14 @@ export default function RegisterPage() {
         if (rpcError.message.includes("invalid_invite_code")) {
           setError(t("reg_code_wrong", lang));
           setStep("code");
+        } else if (rpcError.message.includes("name_matches_existing_child") || rpcError.message.includes("name_matches_existing_member")) {
+          setError(t("reg_name_matches_existing", lang));
+          // Send back to the claim-selection step so they can pick themselves
+          if (relation === "wife") {
+            setStep(selectedHusband ? "confirm_spouse" : "husband");
+          } else {
+            setStep(selectedParent ? "confirm_self" : "parent");
+          }
         } else {
           setError(t("reg_signup_error", lang));
         }

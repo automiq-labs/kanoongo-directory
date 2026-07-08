@@ -441,6 +441,11 @@ const translations = {
 
   // Login/register archival photo
   login_photo_caption: { en: "The Kanoongo family — from our history", hi: "कानूनगो परिवार — हमारे इतिहास से" },
+
+  // Dedup guard errors
+  reg_name_matches_existing: { en: "You already appear in this family's records. Please go back and select yourself from the list instead of creating a new entry.", hi: "आप इस परिवार के रिकॉर्ड में पहले से मौजूद हैं। कृपया वापस जाकर सूची में से स्वयं को चुनें।" },
+  err_child_already_member: { en: "This person is already a registered member of this family.", hi: "यह व्यक्ति पहले से इस परिवार के पंजीकृत सदस्य हैं।" },
+  err_duplicate_entry: { en: "This person is already listed here.", hi: "यह व्यक्ति पहले से यहाँ सूचीबद्ध हैं।" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;
