@@ -10,6 +10,7 @@ import { t } from "@/lib/translations";
 import LanguageToggle from "@/app/language-toggle";
 import { Crest } from "@/components/Crest";
 import { MakerMark } from "@/components/MakerMark";
+import { FooterCredits } from "@/components/FooterCredits";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -202,6 +203,9 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+
+        {/* Attribution + support */}
+        <FooterCredits className="px-5 pb-3" />
 
         {/* Maker mark */}
         <MakerMark />

@@ -450,6 +450,10 @@ const translations = {
   reg_name_matches_existing: { en: "You already appear in this family's records. Please go back and select yourself from the list instead of creating a new entry.", hi: "आप इस परिवार के रिकॉर्ड में पहले से मौजूद हैं। कृपया वापस जाकर सूची में से स्वयं को चुनें।" },
   err_child_already_member: { en: "This person is already a registered member of this family.", hi: "यह व्यक्ति पहले से इस परिवार के पंजीकृत सदस्य हैं।" },
   err_duplicate_entry: { en: "This person is already listed here.", hi: "यह व्यक्ति पहले से यहाँ सूचीबद्ध हैं।" },
+
+  // Footer attribution + support
+  footer_attribution: { en: "Kanoongo Family Directory — Convened & created by Shri Ramakant Kanoongo, D-12, Chikitsalaya Marg, Bapu Nagar, Jaipur (Rajasthan) 302015 · Mobile 9314501135 · Email rkklic@yahoo.com", hi: "कानूनगो परिवार निर्देशिका — संयोजक एवं निर्माता: श्री रमाकान्त कानूनगो, डी-12, चिकित्सालय मार्ग, बापू नगर, जयपुर (राजस्थान) 302015 · मोबाइल 9314501135 · ई-मेल rkklic@yahoo.com" },
+  footer_support: { en: "For help or technical assistance: Ramakant Kanoongo — 9314501135 · Shreyansh Kanoongo (Automiq Labs) — 8108980010 · shreyansh@automiqlabs.com", hi: "सहायता या तकनीकी समस्या के लिए संपर्क करें: रमाकान्त कानूनगो — 9314501135 · श्रेयांश कानूनगो (Automiq Labs) — 8108980010 · shreyansh@automiqlabs.com" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

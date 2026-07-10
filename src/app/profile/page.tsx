@@ -7,6 +7,7 @@ import { useLang } from "@/lib/language-context";
 import { t } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
 import { Crest } from "@/components/Crest";
+import { FooterCredits } from "@/components/FooterCredits";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import { resolveMyMember } from "@/lib/resolve-my-member";
 import BottomNav from "@/app/bottom-nav";
@@ -306,6 +307,8 @@ export default function ProfilePage() {
           >
             Automiq Labs
           </a>
+          <div className="mt-6 h-px w-16 bg-[var(--gold)]/20" />
+          <FooterCredits className="mt-4" />
         </div>
       </div>
 

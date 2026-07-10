@@ -11,6 +11,7 @@ import LanguageToggle from "@/app/language-toggle";
 import Image from "next/image";
 import { Crest } from "@/components/Crest";
 import { MakerMark } from "@/components/MakerMark";
+import { FooterCredits } from "@/components/FooterCredits";
 import GotraSelect from "@/components/form/GotraSelect";
 import DateField from "@/components/form/DateField";
 import PhoneField from "@/components/form/PhoneField";
@@ -953,6 +954,7 @@ export default function RegisterPage() {
           </div>
         </div>
 
+        <FooterCredits className="px-5 pb-3" />
         <MakerMark />
       </div>
     </div>
