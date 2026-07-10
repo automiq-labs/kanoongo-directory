@@ -880,37 +880,52 @@ export default function AdminMemberDetail({
                   <p className="mt-1 text-sm text-[var(--muted)]">{t("adm_unclaimed_label", lang)}</p>
                 )}
                 {/* Edit blocking toggle */}
-                <div className="mt-2 flex items-center justify-between border-t border-[var(--hairline)] pt-2">
-                  <div>
-                    <p className="text-xs font-semibold text-[var(--maroon-deep)]">
-                      {detail.member.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
-                    </p>
-                    <p className="text-[11px] text-[var(--muted)]">{t("adm_edit_blocked_desc", lang)}</p>
+                <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {detail.member.edit_blocked ? (
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(110,30,42,0.08)]">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-[var(--maroon)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(34,139,34,0.06)]">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </span>
+                      )}
+                      <div>
+                        <p className="text-xs font-semibold text-[var(--maroon-deep)]">
+                          {detail.member.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
+                        </p>
+                        <p className="text-[11px] text-[var(--muted)]">{t("adm_edit_blocked_desc", lang)}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm(t("adm_edit_block_confirm", lang))) return;
+                        const newVal = !detail.member.edit_blocked;
+                        await supabase.rpc("admin_update_member", { p_member_id: currentId, p_fields: { edit_blocked: newVal } });
+                        await fetchDetail(currentId);
+                        onRefresh();
+                      }}
+                      className={`ml-3 min-h-[32px] shrink-0 rounded-[var(--r-sm)] px-3 py-1 text-[11px] font-medium ${
+                        detail.member.edit_blocked
+                          ? "border border-green-500/40 text-green-700 hover:bg-[rgba(34,139,34,0.06)]"
+                          : "border border-[var(--maroon)]/40 text-[var(--maroon)] hover:bg-[rgba(110,30,42,0.06)]"
+                      }`}
+                    >
+                      {detail.member.edit_blocked ? t("adm_allow_editing", lang) : t("adm_block_editing", lang)}
+                    </button>
                   </div>
-                  <button
-                    onClick={async () => {
-                      const cur = Boolean(detail.member.edit_blocked);
-                      await supabase.rpc("admin_set_edit_blocked", { p_member_id: currentId, p_blocked: !cur });
-                      await fetchDetail(currentId);
-                      onRefresh();
-                    }}
-                    className={`ml-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[1.5px] ${
-                      detail.member.edit_blocked
-                        ? "border-[var(--maroon)] bg-[rgba(110,30,42,0.08)] text-[var(--maroon)]"
-                        : "border-green-500/40 bg-[rgba(34,139,34,0.06)] text-green-600"
-                    }`}
-                    aria-label={detail.member.edit_blocked ? t("adm_edit_blocked", lang) : t("adm_edit_allowed", lang)}
-                  >
-                    {detail.member.edit_blocked ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
+                  {/* D-member note for married daughters */}
+                  {currentId.startsWith("D") && (
+                    <p className="mt-1.5 rounded-[var(--r-sm)] bg-[rgba(201,150,46,0.08)] px-2.5 py-1.5 text-[11px] text-[var(--gold-deep)]">
+                      {t("adm_daughter_edit_note", lang)}
+                    </p>
+                  )}
                 </div>
               </div>
 

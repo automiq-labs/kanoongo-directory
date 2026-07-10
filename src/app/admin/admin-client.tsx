@@ -277,9 +277,9 @@ export default function AdminClient() {
     setMemberRows((prev) =>
       prev.map((r) => r.member_id === memberId ? { ...r, edit_blocked: !currentBlocked } : r),
     );
-    const { error } = await supabase.rpc("admin_set_edit_blocked", {
+    const { error } = await supabase.rpc("admin_update_member", {
       p_member_id: memberId,
-      p_blocked: !currentBlocked,
+      p_fields: { edit_blocked: !currentBlocked },
     });
     if (error) {
       // Revert on error
