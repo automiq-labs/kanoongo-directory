@@ -6,7 +6,7 @@ import { useLang } from "@/lib/language-context";
 import { t, type Lang, type TranslationKey } from "@/lib/translations";
 import type { SpouseRelative, MarriedDaughter } from "@/lib/types";
 import { bi } from "@/lib/bilingual";
-import { transliteratePhrase, useAutoHindi } from "@/lib/transliterate";
+import { transliteratePhrase, useAutoHindi, sweepAutoHindi } from "@/lib/transliterate";
 import { RELATION_OPTIONS } from "@/lib/form-options";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -250,27 +250,50 @@ function mapDedupError(msg: string, lang: Lang): string | null {
   return null;
 }
 
-/** EnHiPair — two inputs (English left, Hindi right) with auto-transliteration */
+/** EnHiPair — English + Hindi inputs with silent auto-fill AND explicit "अ" translate button */
 function EnHiPair({ label, enVal, hiVal, onEnChange, onHiChange, textarea }: {
   label: string; enVal: string; hiVal: string;
   onEnChange: (v: string) => void; onHiChange: (v: string) => void;
   textarea?: boolean;
 }) {
   const [filling, setFilling] = useState(false);
+  const [btnBusy, setBtnBusy] = useState(false);
+  const [btnErr, setBtnErr] = useState(false);
   const { onBlurEnglish } = useAutoHindi(enVal, hiVal, onHiChange, setFilling);
   const cls = INPUT_CLS + " !min-h-[32px] !text-xs";
+
+  async function handleTransliterate() {
+    const trimmed = enVal.trim();
+    if (!trimmed) return;
+    setBtnBusy(true); setBtnErr(false);
+    const result = await transliteratePhrase(trimmed);
+    if (result) { onHiChange(result); } else { setBtnErr(true); setTimeout(() => setBtnErr(false), 2000); }
+    setBtnBusy(false);
+  }
+
   return (
     <div className="col-span-1 sm:col-span-2">
       <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{label}</label>
-      <div className="grid grid-cols-2 gap-1.5">
-        <div className="relative">
+      <div className="flex gap-1.5 items-start">
+        <div className="flex-1">
           {textarea ? <textarea value={enVal} onChange={(e) => onEnChange(e.target.value)} onBlur={onBlurEnglish} rows={2} placeholder="English" className={cls + " min-h-[56px] resize-y"} />
             : <input type="text" value={enVal} onChange={(e) => onEnChange(e.target.value)} onBlur={onBlurEnglish} placeholder="English" className={cls} />}
         </div>
-        <div className="relative">
+        <button
+          type="button"
+          onClick={handleTransliterate}
+          disabled={btnBusy || !enVal.trim()}
+          title="हिंदी में बदलें / Convert to Hindi"
+          aria-label="हिंदी में बदलें"
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--gold)]/40 text-[11px] font-bold text-[var(--gold-deep)] hover:bg-[rgba(201,150,46,0.08)] disabled:opacity-40"
+        >
+          {btnBusy ? <span className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-[var(--gold)] border-t-transparent" /> : "अ"}
+        </button>
+        <div className="relative flex-1">
           {textarea ? <textarea value={hiVal} onChange={(e) => onHiChange(e.target.value)} rows={2} placeholder="हिंदी" className={cls + " min-h-[56px] resize-y"} />
             : <input type="text" value={hiVal} onChange={(e) => onHiChange(e.target.value)} placeholder="हिंदी" className={cls} />}
           {filling && <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--gold)] animate-pulse">···</span>}
+          {btnErr && <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--maroon)]">retry</span>}
         </div>
       </div>
     </div>
@@ -1596,7 +1619,11 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
 
   async function handleSave() {
     if (!editId) return;
-    const dirty = dirtyDiff(editVals, editOrig);
+    // Save-time Hindi sweep
+    const relPairs: [string, string][] = [["full_name", "full_name_en"], ["city", "city_en"], ["addr", "addr_en"], ["occupation", "occupation_en"], ["notes", "notes_en"]];
+    const swept = await sweepAutoHindi(editVals, relPairs);
+    setEditVals(swept);
+    const dirty = dirtyDiff(swept, editOrig);
     if (Object.keys(dirty).length === 0) { setEditId(null); return; }
     setSaving(true);
     const { error } = await supabase.rpc("admin_update_spouse_relative", { p_relative_id: editId, p_fields: dirty });
@@ -1606,18 +1633,23 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
 
   async function handleAdd() {
     setSaving(true);
+    // Save-time Hindi sweep
+    const relPairs: [string, string][] = [["full_name", "full_name_en"], ["city", "city_en"], ["addr", "addr_en"], ["occupation", "occupation_en"], ["notes", "notes_en"]];
+    const swept = await sweepAutoHindi(addVals, relPairs);
+    // full_name is required — fall back to English text if Hindi still empty
+    if (!swept.full_name?.trim() && swept.full_name_en?.trim()) swept.full_name = swept.full_name_en.trim();
     const { error } = await supabase.rpc("add_spouse_relative", {
       p_spouse_id: spouseId,
-      p_relation_code: addVals.relation_code || "other",
-      p_relation_label: addVals.relation_label || null,
-      p_relation_label_en: addVals.relation_label_en || null,
-      p_full_name: addVals.full_name || null,
-      p_full_name_en: addVals.full_name_en || null,
-      p_addr: addVals.addr || null, p_addr_en: addVals.addr_en || null,
-      p_city: addVals.city || null, p_city_en: addVals.city_en || null,
-      p_mobile: addVals.mobile || null,
-      p_occupation: addVals.occupation || null, p_occupation_en: addVals.occupation_en || null,
-      p_notes: addVals.notes || null, p_notes_en: addVals.notes_en || null,
+      p_relation_code: swept.relation_code || "other",
+      p_relation_label: swept.relation_label || null,
+      p_relation_label_en: swept.relation_label_en || null,
+      p_full_name: swept.full_name || null,
+      p_full_name_en: swept.full_name_en || null,
+      p_addr: swept.addr || null, p_addr_en: swept.addr_en || null,
+      p_city: swept.city || null, p_city_en: swept.city_en || null,
+      p_mobile: swept.mobile || null,
+      p_occupation: swept.occupation || null, p_occupation_en: swept.occupation_en || null,
+      p_notes: swept.notes || null, p_notes_en: swept.notes_en || null,
     });
     if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
@@ -1743,9 +1775,13 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
 
   async function handleSave() {
     if (!editId) return;
+    // Save-time Hindi sweep
+    const mdPairs: [string, string][] = [["full_name", "full_name_en"], ["husband_name", "husband_name_en"], ["sasur_name", "sasur_name_en"], ["addr", "addr_en"], ["city", "city_en"], ["education", "education_en"], ["occupation", "occupation_en"], ["children_note", "children_note_en"], ["notes", "notes_en"]];
+    const swept = await sweepAutoHindi(editVals, mdPairs);
+    setEditVals(swept);
     const dirty: Record<string, unknown> = {};
-    for (const k of Object.keys(editVals)) {
-      const newVal = editVals[k]?.trim() ?? "";
+    for (const k of Object.keys(swept)) {
+      const newVal = swept[k]?.trim() ?? "";
       const origVal = editOrig[k]?.trim() ?? "";
       if (newVal !== origVal) {
         if (k === "needs_review") dirty[k] = newVal === "true";
@@ -1761,8 +1797,11 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
 
   async function handleAdd() {
     setSaving(true);
+    // Save-time Hindi sweep
+    const mdPairs: [string, string][] = [["full_name", "full_name_en"], ["husband_name", "husband_name_en"], ["sasur_name", "sasur_name_en"], ["addr", "addr_en"], ["city", "city_en"], ["education", "education_en"], ["occupation", "occupation_en"], ["children_note", "children_note_en"], ["notes", "notes_en"]];
+    const swept = await sweepAutoHindi(addVals, mdPairs);
     const fields: Record<string, string | null> = {};
-    for (const [k, v] of Object.entries(addVals)) {
+    for (const [k, v] of Object.entries(swept)) {
       if (k === "needs_review") continue;
       if (v.trim()) fields[k] = v.trim();
     }
