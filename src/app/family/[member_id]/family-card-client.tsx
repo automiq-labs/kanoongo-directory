@@ -405,26 +405,9 @@ function buildBilingualPayload(
   return payload;
 }
 
-// ── Relation code/label mapping ─────────────────────────────────────────────
+// ── Relation code/label mapping (shared) ────────────────────────────────────
 
-const RELATION_OPTIONS = [
-  { code: "sasur", hi: "ससुर", en: "Father-in-law" },
-  { code: "sas", hi: "सास", en: "Mother-in-law" },
-  { code: "sala", hi: "साला", en: "Brother-in-law" },
-  { code: "sali", hi: "साली", en: "Sister-in-law" },
-  { code: "chacher_sasur", hi: "चचेर ससुर", en: "Father-in-law's cousin" },
-  { code: "bahnoi", hi: "बहनोई", en: "Sister's husband" },
-  { code: "mother", hi: "माता", en: "Mother" },
-  { code: "father", hi: "पिता", en: "Father" },
-  { code: "brother", hi: "भाई", en: "Brother" },
-  { code: "sister", hi: "बहन", en: "Sister" },
-  { code: "other", hi: "अन्य", en: "Other" },
-] as const;
-
-// Preferred group ordering by code
-const RELATION_SORT_ORDER: Record<string, number> = {
-  sasur: 0, sas: 1, chacher_sasur: 2, sala: 3, sali: 4, bahnoi: 5, other: 99,
-};
+import { RELATION_OPTIONS, RELATION_SORT_ORDER } from "@/lib/form-options";
 
 function groupRelatives(relatives: SpouseRelative[], lang: Lang) {
   const groups = new Map<string, { label: string; members: SpouseRelative[] }>();

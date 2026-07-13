@@ -6,7 +6,8 @@ import { useLang } from "@/lib/language-context";
 import { t, type Lang, type TranslationKey } from "@/lib/translations";
 import type { SpouseRelative, MarriedDaughter } from "@/lib/types";
 import { bi } from "@/lib/bilingual";
-import { transliteratePhrase } from "@/lib/transliterate";
+import { transliteratePhrase, useAutoHindi } from "@/lib/transliterate";
+import { RELATION_OPTIONS } from "@/lib/form-options";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Types
@@ -241,6 +242,53 @@ const MD_EDIT_KEYS = [
   "occupation_en", "dom", "children_note", "children_note_en",
   "notes", "notes_en", "needs_review",
 ];
+
+/** Map dedup error codes to bilingual messages */
+function mapDedupError(msg: string, lang: Lang): string | null {
+  if (msg.includes("duplicate_relative") || msg.includes("duplicate_daughter") || msg.includes("duplicate_spouse") || msg.includes("duplicate_child")) return t("err_duplicate_entry" as TranslationKey, lang);
+  if (msg.includes("child_already_member")) return t("err_child_already_member" as TranslationKey, lang);
+  return null;
+}
+
+/** EnHiPair — two inputs (English left, Hindi right) with auto-transliteration */
+function EnHiPair({ label, enVal, hiVal, onEnChange, onHiChange, textarea }: {
+  label: string; enVal: string; hiVal: string;
+  onEnChange: (v: string) => void; onHiChange: (v: string) => void;
+  textarea?: boolean;
+}) {
+  const [filling, setFilling] = useState(false);
+  const { onBlurEnglish } = useAutoHindi(enVal, hiVal, onHiChange, setFilling);
+  const cls = INPUT_CLS + " !min-h-[32px] !text-xs";
+  return (
+    <div className="col-span-1 sm:col-span-2">
+      <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{label}</label>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div className="relative">
+          {textarea ? <textarea value={enVal} onChange={(e) => onEnChange(e.target.value)} onBlur={onBlurEnglish} rows={2} placeholder="English" className={cls + " min-h-[56px] resize-y"} />
+            : <input type="text" value={enVal} onChange={(e) => onEnChange(e.target.value)} onBlur={onBlurEnglish} placeholder="English" className={cls} />}
+        </div>
+        <div className="relative">
+          {textarea ? <textarea value={hiVal} onChange={(e) => onHiChange(e.target.value)} rows={2} placeholder="हिंदी" className={cls + " min-h-[56px] resize-y"} />
+            : <input type="text" value={hiVal} onChange={(e) => onHiChange(e.target.value)} placeholder="हिंदी" className={cls} />}
+          {filling && <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--gold)] animate-pulse">···</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Admin RelationDropdown */
+function AdminRelationDropdown({ value, onChange, lang }: { value: string; onChange: (code: string, hi: string, en: string) => void; lang: Lang }) {
+  return (
+    <div className="col-span-1 sm:col-span-2">
+      <label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_relation", lang)}</label>
+      <select value={value} onChange={(e) => { const c = e.target.value; const o = RELATION_OPTIONS.find((x) => x.code === c); onChange(c, o?.hi || "", o?.en || ""); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"}>
+        <option value="">— {t("label_relation", lang)} —</option>
+        {RELATION_OPTIONS.map((o) => <option key={o.code} value={o.code}>{lang === "en" ? `${o.en} (${o.hi})` : `${o.hi} (${o.en})`}</option>)}
+      </select>
+    </div>
+  );
+}
 
 function isFemaleGender(gender: unknown): boolean {
   return String(gender || "").toUpperCase().startsWith("F");
@@ -1520,7 +1568,7 @@ export default function AdminMemberDetail({
    ═══════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Admin Relatives Block (spouse relatives — edit/add/remove)
+   Admin Relatives Block — human-labelled, auto-Hindi, relation dropdown
    ═══════════════════════════════════════════════════════════════════════ */
 
 function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }: {
@@ -1530,7 +1578,7 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
   const [editVals, setEditVals] = useState<Record<string, string>>({});
   const [editOrig, setEditOrig] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [errMsg, setErrMsg] = useState("");
+  const [errMsg, setErrMsg] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
   const [addVals, setAddVals] = useState<Record<string, string>>({});
   const [removeId, setRemoveId] = useState<string | null>(null);
@@ -1552,7 +1600,7 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
     if (Object.keys(dirty).length === 0) { setEditId(null); return; }
     setSaving(true);
     const { error } = await supabase.rpc("admin_update_spouse_relative", { p_relative_id: editId, p_fields: dirty });
-    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setEditId(null); setSaving(false); onRefresh();
   }
 
@@ -1571,7 +1619,7 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
       p_occupation: addVals.occupation || null, p_occupation_en: addVals.occupation_en || null,
       p_notes: addVals.notes || null, p_notes_en: addVals.notes_en || null,
     });
-    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
   }
 
@@ -1603,12 +1651,18 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
         <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); setErrMsg(""); }} className="text-[11px] font-medium text-[var(--gold-deep)]">{showAdd ? t("cancel", lang) : `+ ${t("add_relative" as TranslationKey, lang)}`}</button>
       </div>
       {showAdd && (
-        <div className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-white p-2 space-y-1.5">
-          {RELATIVE_EDIT_KEYS.map((k) => (
-            <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={addVals[k] || ""} onChange={(e) => setAddVals((p) => ({ ...p, [k]: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
-          ))}
-          {errMsg && <p className="text-[11px] text-[var(--maroon)]">{errMsg}</p>}
-          <button onClick={handleAdd} disabled={saving} className="min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? "…" : t("add_relative" as TranslationKey, lang)}</button>
+        <div className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-white p-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            <AdminRelationDropdown value={addVals.relation_code || ""} onChange={(c, hi, en) => setAddVals((p) => ({ ...p, relation_code: c, relation_label: hi, relation_label_en: en }))} lang={lang} />
+            <EnHiPair label={t("label_full_name", lang)} enVal={addVals.full_name_en || ""} hiVal={addVals.full_name || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, full_name_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, full_name: v }))} />
+            <div className="col-span-1 sm:col-span-2"><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label><input type="text" value={addVals.mobile || ""} onChange={(e) => setAddVals((p) => ({ ...p, mobile: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+            <EnHiPair label={t("label_city", lang)} enVal={addVals.city_en || ""} hiVal={addVals.city || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, city_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, city: v }))} />
+            <EnHiPair label={t("label_addr", lang)} enVal={addVals.addr_en || ""} hiVal={addVals.addr || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, addr_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, addr: v }))} />
+            <EnHiPair label={t("label_occupation", lang)} enVal={addVals.occupation_en || ""} hiVal={addVals.occupation || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, occupation_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, occupation: v }))} />
+            <EnHiPair label={t("label_notes", lang)} enVal={addVals.notes_en || ""} hiVal={addVals.notes || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, notes_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, notes: v }))} textarea />
+          </div>
+          {errMsg && <p className="mt-1.5 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+          <button onClick={handleAdd} disabled={saving} className="mt-2 min-h-[28px] w-full rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? "…" : t("add_relative" as TranslationKey, lang)}</button>
         </div>
       )}
       {active.map((r) => {
@@ -1620,20 +1674,22 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
               <div className="flex items-center gap-2"><span className="text-xs font-medium text-[var(--gold-deep)]">{rLabel}</span><span className="text-sm text-[var(--maroon-deep)]">{rName || "—"}</span></div>
               <div className="flex gap-1.5">
                 <button onClick={() => editId === r.relative_id ? setEditId(null) : startEdit(r)} className="text-[11px] text-[var(--gold-deep)]">{editId === r.relative_id ? t("adm_close_edit", lang) : t("adm_edit_btn", lang)}</button>
-                {removeId === r.relative_id ? (
-                  <><button onClick={() => handleRemove(r.relative_id)} className="text-[11px] text-[var(--maroon)]">{t("adm_confirm_action", lang)}</button><button onClick={() => setRemoveId(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button></>
-                ) : (
-                  <button onClick={() => setRemoveId(r.relative_id)} className="text-[11px] text-[var(--muted)]">✕</button>
-                )}
+                {removeId === r.relative_id ? (<><button onClick={() => handleRemove(r.relative_id)} className="text-[11px] text-[var(--maroon)]">{t("adm_confirm_action", lang)}</button><button onClick={() => setRemoveId(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button></>) : (<button onClick={() => setRemoveId(r.relative_id)} className="text-[11px] text-[var(--muted)]">✕</button>)}
               </div>
             </div>
             {editId === r.relative_id && (
-              <div className="mt-1.5 border-t border-[var(--hairline)] pt-1.5 grid grid-cols-2 gap-1.5">
-                {RELATIVE_EDIT_KEYS.map((k) => (
-                  <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={editVals[k] || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, [k]: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
-                ))}
-                {errMsg && <p className="col-span-2 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
-                <button onClick={handleSave} disabled={saving} className="col-span-2 min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("adm_saving", lang) : t("adm_save_changes", lang)}</button>
+              <div className="mt-1.5 border-t border-[var(--hairline)] pt-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <AdminRelationDropdown value={editVals.relation_code || ""} onChange={(c, hi, en) => { setErrMsg(""); setEditVals((p) => ({ ...p, relation_code: c, relation_label: hi, relation_label_en: en })); }} lang={lang} />
+                  <EnHiPair label={t("label_full_name", lang)} enVal={editVals.full_name_en || ""} hiVal={editVals.full_name || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, full_name_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, full_name: v })); }} />
+                  <div className="col-span-1 sm:col-span-2"><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label><input type="text" value={editVals.mobile || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, mobile: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  <EnHiPair label={t("label_city", lang)} enVal={editVals.city_en || ""} hiVal={editVals.city || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, city_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, city: v })); }} />
+                  <EnHiPair label={t("label_addr", lang)} enVal={editVals.addr_en || ""} hiVal={editVals.addr || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, addr_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, addr: v })); }} />
+                  <EnHiPair label={t("label_occupation", lang)} enVal={editVals.occupation_en || ""} hiVal={editVals.occupation || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, occupation_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, occupation: v })); }} />
+                  <EnHiPair label={t("label_notes", lang)} enVal={editVals.notes_en || ""} hiVal={editVals.notes || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, notes_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, notes: v })); }} textarea />
+                </div>
+                {errMsg && <p className="mt-1.5 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+                <button onClick={handleSave} disabled={saving} className="mt-2 min-h-[28px] w-full rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("adm_saving", lang) : t("adm_save_changes", lang)}</button>
               </div>
             )}
           </div>
@@ -1699,7 +1755,7 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
     if (Object.keys(dirty).length === 0) { setEditId(null); return; }
     setSaving(true);
     const { error } = await supabase.rpc("admin_update_married_daughter", { p_md_id: editId, p_fields: dirty });
-    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setEditId(null); setSaving(false); onRefresh();
   }
 
@@ -1712,7 +1768,7 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
     }
     if (!fields.relation_label) { fields.relation_label = "बेटी/बहन"; fields.relation_label_en = "Daughter/Sister"; }
     const { error } = await supabase.rpc("add_married_daughter", { p_member_id: memberId, p_fields: fields });
-    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
   }
 
@@ -1732,8 +1788,6 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
     );
   }
 
-  const addKeys = MD_EDIT_KEYS.filter((k) => k !== "needs_review");
-
   return (
     <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
       <div className="flex items-center justify-between mb-3">
@@ -1741,12 +1795,25 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
         <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); setErrMsg(""); }} className="text-[11px] font-medium text-[var(--gold-deep)]">{showAdd ? t("cancel", lang) : `+ ${t("adm_add_md", lang)}`}</button>
       </div>
       {showAdd && (
-        <div className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5 grid grid-cols-2 gap-1.5">
-          {addKeys.map((k) => (
-            <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={addVals[k] || ""} onChange={(e) => setAddVals((p) => ({ ...p, [k]: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
-          ))}
-          {errMsg && <p className="col-span-2 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
-          <button onClick={handleAdd} disabled={saving} className="col-span-2 min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? "…" : t("adm_add_md", lang)}</button>
+        <div className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            <EnHiPair label={t("label_full_name", lang)} enVal={addVals.full_name_en || ""} hiVal={addVals.full_name || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, full_name_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, full_name: v }))} />
+            <EnHiPair label={t("label_education", lang)} enVal={addVals.education_en || ""} hiVal={addVals.education || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, education_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, education: v }))} />
+            <EnHiPair label={t("label_occupation", lang)} enVal={addVals.occupation_en || ""} hiVal={addVals.occupation || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, occupation_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, occupation: v }))} />
+            <div className="col-span-1 sm:col-span-2"><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_dom", lang)}</label><input type="text" placeholder="YYYY-MM-DD" value={addVals.dom || ""} onChange={(e) => setAddVals((p) => ({ ...p, dom: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+            <EnHiPair label={t("label_husband", lang)} enVal={addVals.husband_name_en || ""} hiVal={addVals.husband_name || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, husband_name_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, husband_name: v }))} />
+            <EnHiPair label={t("label_sasur", lang)} enVal={addVals.sasur_name_en || ""} hiVal={addVals.sasur_name || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, sasur_name_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, sasur_name: v }))} />
+            <EnHiPair label={t("label_addr", lang)} enVal={addVals.addr_en || ""} hiVal={addVals.addr || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, addr_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, addr: v }))} />
+            <EnHiPair label={t("label_city", lang)} enVal={addVals.city_en || ""} hiVal={addVals.city || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, city_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, city: v }))} />
+            <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label><input type="text" value={addVals.mobile || ""} onChange={(e) => setAddVals((p) => ({ ...p, mobile: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_husband_mobile", lang)}</label><input type="text" value={addVals.husband_mobile || ""} onChange={(e) => setAddVals((p) => ({ ...p, husband_mobile: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_sasur_mobile" as TranslationKey, lang)}</label><input type="text" value={addVals.sasur_mobile || ""} onChange={(e) => setAddVals((p) => ({ ...p, sasur_mobile: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+            <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_email", lang)}</label><input type="text" value={addVals.email || ""} onChange={(e) => setAddVals((p) => ({ ...p, email: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+            <EnHiPair label={t("label_children_note", lang)} enVal={addVals.children_note_en || ""} hiVal={addVals.children_note || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, children_note_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, children_note: v }))} textarea />
+            <EnHiPair label={t("label_notes", lang)} enVal={addVals.notes_en || ""} hiVal={addVals.notes || ""} onEnChange={(v) => setAddVals((p) => ({ ...p, notes_en: v }))} onHiChange={(v) => setAddVals((p) => ({ ...p, notes: v }))} textarea />
+          </div>
+          {errMsg && <p className="mt-1.5 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+          <button onClick={handleAdd} disabled={saving} className="mt-2 min-h-[28px] w-full rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? "…" : t("adm_add_md", lang)}</button>
         </div>
       )}
       {active.map((d) => {
@@ -1765,28 +1832,34 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
               </div>
               <div className="flex gap-1.5">
                 <button onClick={() => editId === d.md_id ? setEditId(null) : startEdit(d)} className="text-[11px] text-[var(--gold-deep)]">{editId === d.md_id ? t("adm_close_edit", lang) : t("adm_edit_btn", lang)}</button>
-                {removeId === d.md_id ? (
-                  <><button onClick={() => handleRemove(d.md_id)} className="text-[11px] text-[var(--maroon)]">{t("adm_confirm_action", lang)}</button><button onClick={() => setRemoveId(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button></>
-                ) : (
-                  <button onClick={() => setRemoveId(d.md_id)} className="text-[11px] text-[var(--muted)]">✕</button>
-                )}
+                {removeId === d.md_id ? (<><button onClick={() => handleRemove(d.md_id)} className="text-[11px] text-[var(--maroon)]">{t("adm_confirm_action", lang)}</button><button onClick={() => setRemoveId(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button></>) : (<button onClick={() => setRemoveId(d.md_id)} className="text-[11px] text-[var(--muted)]">✕</button>)}
               </div>
             </div>
             {editId === d.md_id && (
-              <div className="mt-1.5 border-t border-[var(--hairline)] pt-1.5 grid grid-cols-2 gap-1.5">
-                {MD_EDIT_KEYS.map((k) => (
-                  k === "needs_review" ? (
-                    <div key={k} className="col-span-2 flex items-center gap-2">
-                      <label className="text-[10px] text-[var(--muted)]">{t("adm_needs_review", lang)}</label>
-                      <input type="checkbox" checked={editVals[k] === "true"} onChange={(e) => setEditVals((p) => ({ ...p, [k]: e.target.checked ? "true" : "false" }))} className="h-3.5 w-3.5" />
-                    </div>
-                  ) : (
-                    <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={editVals[k] || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, [k]: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
-                  )
-                ))}
-                {errMsg && <p className="col-span-2 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
-                <button onClick={handleSave} disabled={saving} className="col-span-2 min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("adm_saving", lang) : t("adm_save_changes", lang)}</button>
-                {d.source_raw && <p className="col-span-2 font-mono text-[10px] text-[var(--muted)] break-all">{d.source_raw}</p>}
+              <div className="mt-1.5 border-t border-[var(--hairline)] pt-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <EnHiPair label={t("label_full_name", lang)} enVal={editVals.full_name_en || ""} hiVal={editVals.full_name || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, full_name_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, full_name: v })); }} />
+                  <EnHiPair label={t("label_education", lang)} enVal={editVals.education_en || ""} hiVal={editVals.education || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, education_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, education: v })); }} />
+                  <EnHiPair label={t("label_occupation", lang)} enVal={editVals.occupation_en || ""} hiVal={editVals.occupation || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, occupation_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, occupation: v })); }} />
+                  <div className="col-span-1 sm:col-span-2"><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_dom", lang)}</label><input type="text" placeholder="YYYY-MM-DD" value={editVals.dom || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, dom: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  <EnHiPair label={t("label_husband", lang)} enVal={editVals.husband_name_en || ""} hiVal={editVals.husband_name || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, husband_name_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, husband_name: v })); }} />
+                  <EnHiPair label={t("label_sasur", lang)} enVal={editVals.sasur_name_en || ""} hiVal={editVals.sasur_name || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, sasur_name_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, sasur_name: v })); }} />
+                  <EnHiPair label={t("label_addr", lang)} enVal={editVals.addr_en || ""} hiVal={editVals.addr || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, addr_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, addr: v })); }} />
+                  <EnHiPair label={t("label_city", lang)} enVal={editVals.city_en || ""} hiVal={editVals.city || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, city_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, city: v })); }} />
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_mobile", lang)}</label><input type="text" value={editVals.mobile || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, mobile: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_husband_mobile", lang)}</label><input type="text" value={editVals.husband_mobile || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, husband_mobile: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_sasur_mobile" as TranslationKey, lang)}</label><input type="text" value={editVals.sasur_mobile || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, sasur_mobile: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  <div><label className="mb-1 block text-[11px] font-medium text-[var(--muted)]">{t("label_email", lang)}</label><input type="text" value={editVals.email || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, email: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  <EnHiPair label={t("label_children_note", lang)} enVal={editVals.children_note_en || ""} hiVal={editVals.children_note || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, children_note_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, children_note: v })); }} textarea />
+                  <EnHiPair label={t("label_notes", lang)} enVal={editVals.notes_en || ""} hiVal={editVals.notes || ""} onEnChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, notes_en: v })); }} onHiChange={(v) => { setErrMsg(""); setEditVals((p) => ({ ...p, notes: v })); }} textarea />
+                  <div className="col-span-1 sm:col-span-2 flex items-center gap-2">
+                    <input type="checkbox" checked={editVals.needs_review === "true"} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, needs_review: e.target.checked ? "true" : "false" })); }} className="h-3.5 w-3.5" />
+                    <label className="text-[11px] text-[var(--muted)]">{t("adm_needs_review", lang)}</label>
+                  </div>
+                </div>
+                {errMsg && <p className="mt-1.5 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+                <button onClick={handleSave} disabled={saving} className="mt-2 min-h-[28px] w-full rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("adm_saving", lang) : t("adm_save_changes", lang)}</button>
+                {d.source_raw && <p className="mt-1.5 font-mono text-[10px] text-[var(--muted)] break-all">{d.source_raw}</p>}
               </div>
             )}
           </div>

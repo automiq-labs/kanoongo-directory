@@ -438,6 +438,7 @@ const translations = {
   label_sasur: { en: "Father-in-law", hi: "ससुर" },
   label_husband_mobile: { en: "Husband's mobile", hi: "पति का मोबाइल" },
   label_children_note: { en: "Children", hi: "संतान" },
+  label_sasur_mobile: { en: "Father-in-law's mobile", hi: "ससुर का मोबाइल" },
 
   // Admin login
   adm_login_title: { en: "Admin Portal", hi: "प्रशासक पोर्टल" },
