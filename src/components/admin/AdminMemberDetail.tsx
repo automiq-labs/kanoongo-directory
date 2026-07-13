@@ -207,6 +207,41 @@ const CHILD_FIELDS: SimpleFieldDef[] = [
    Helpers
    ═══════════════════════════════════════════════════════════════════════ */
 
+/** Compute dirty fields between form vals and an original record. Empty string → null for deliberate clears. */
+function dirtyDiff(vals: Record<string, unknown>, orig: Record<string, unknown>): Record<string, unknown> {
+  const dirty: Record<string, unknown> = {};
+  for (const k of Object.keys(vals)) {
+    const newVal = String(vals[k] ?? "").trim();
+    const origVal = (orig[k] ?? "").toString().trim();
+    if (newVal !== origVal) {
+      dirty[k] = newVal || null;
+    }
+  }
+  return dirty;
+}
+
+/** Init form values from a record, converting null → "" */
+function initFormVals(rec: Record<string, unknown>, keys: string[]): Record<string, string> {
+  const vals: Record<string, string> = {};
+  for (const k of keys) vals[k] = String(rec[k] ?? "");
+  return vals;
+}
+
+const RELATIVE_EDIT_KEYS = [
+  "relation_code", "relation_label", "relation_label_en",
+  "full_name", "full_name_en", "addr", "addr_en", "city", "city_en",
+  "mobile", "occupation", "occupation_en", "notes", "notes_en",
+];
+
+const MD_EDIT_KEYS = [
+  "relation_label", "relation_label_en", "full_name", "full_name_en",
+  "husband_name", "husband_name_en", "sasur_name", "sasur_name_en",
+  "addr", "addr_en", "city", "city_en", "mobile", "husband_mobile",
+  "sasur_mobile", "email", "education", "education_en", "occupation",
+  "occupation_en", "dom", "children_note", "children_note_en",
+  "notes", "notes_en", "needs_review",
+];
+
 function isFemaleGender(gender: unknown): boolean {
   return String(gender || "").toUpperCase().startsWith("F");
 }
@@ -1115,29 +1150,8 @@ export default function AdminMemberDetail({
                         </div>
                       </div>
                     )}
-                    {/* Admin read-only relatives */}
-                    {sp.relatives && sp.relatives.length > 0 && (
-                      <div className="mt-2 border-t border-[var(--hairline)] pt-2">
-                        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family" as TranslationKey, lang)}</p>
-                        {sp.relatives.map((r) => {
-                          const rName = bi(r.full_name, r.full_name_en, lang);
-                          const rLabel = bi(r.relation_label, r.relation_label_en, lang) || "—";
-                          const rCity = bi(r.city, r.city_en, lang);
-                          const isRemoved = Boolean(r.removed_at);
-                          return (
-                            <div key={r.relative_id} className={`mb-1 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-white p-2 ${isRemoved ? "opacity-50" : ""}`}>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium text-[var(--gold-deep)]">{rLabel}</span>
-                                <span className="text-sm text-[var(--maroon-deep)]">{rName || "—"}</span>
-                                {rCity && <span className="text-[11px] text-[var(--muted)]">· {rCity}</span>}
-                                {r.mobile && <span className="text-[11px] text-[var(--muted)]">· {r.mobile}</span>}
-                                {isRemoved && <span className="rounded-[var(--r-pill)] bg-[rgba(110,30,42,0.08)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--maroon)]">{t("adm_removed_label" as TranslationKey, lang)}</span>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    {/* Admin relatives — editable */}
+                    <AdminRelativesBlock spouseId={sp.spouse_id} relatives={sp.relatives || []} supabase={supabase} lang={lang} onRefresh={() => fetchDetail(currentId)} />
                   </div>
                 ))}
 
@@ -1317,41 +1331,8 @@ export default function AdminMemberDetail({
                 )}
               </div>
 
-              {/* ══════ SECTION C2: MARRIED DAUGHTERS (owned) ════════ */}
-              {detail.married_daughters && detail.married_daughters.length > 0 && (
-                <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
-                  <h3 className="font-display text-base font-semibold text-[var(--maroon)] mb-3">बेटी / बहन — Married daughters (owned)</h3>
-                  {detail.married_daughters.map((d) => {
-                    const dName = bi(d.full_name, d.full_name_en, lang);
-                    const dHusband = bi(d.husband_name, d.husband_name_en, lang);
-                    const dSasur = bi(d.sasur_name, d.sasur_name_en, lang);
-                    const dCity = bi(d.city, d.city_en, lang);
-                    const dEdu = bi(d.education, d.education_en, lang);
-                    const dChildNote = bi(d.children_note, d.children_note_en, lang);
-                    const isRemoved = Boolean(d.removed_at);
-                    return (
-                      <div key={d.md_id} className={`mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5 ${isRemoved ? "opacity-50" : ""}`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-sm font-medium ${isRemoved ? "line-through text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>{dName || "—"}</span>
-                          {d.d_member_id && (
-                            <a href={`/family/${d.d_member_id}`} className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.12)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--gold-deep)] hover:underline">{d.d_member_id}</a>
-                          )}
-                          {dHusband && <span className="text-[11px] text-[var(--muted)]">· पति: {dHusband}</span>}
-                          {dCity && <span className="text-[11px] text-[var(--muted)]">· {dCity}</span>}
-                          {d.mobile && <span className="text-[11px] text-[var(--muted)]">· {d.mobile}</span>}
-                          {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">समीक्षा करें / Review</span>}
-                          {isRemoved && <span className="text-[10px] text-[var(--muted)]">({d.removed_at})</span>}
-                        </div>
-                        {dSasur && <p className="mt-0.5 text-[11px] text-[var(--muted)]">ससुर: {dSasur}</p>}
-                        {dEdu && <p className="text-[11px] text-[var(--muted)]">{dEdu}</p>}
-                        {d.dom && <p className="text-[11px] text-[var(--muted)]">विवाह: {d.dom}</p>}
-                        {dChildNote && <p className="mt-0.5 whitespace-pre-line text-[11px] text-[var(--text-body)]">{dChildNote}</p>}
-                        {d.source_raw && <p className="mt-1 font-mono text-[10px] text-[var(--muted)] break-all">{d.source_raw}</p>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              {/* ══════ SECTION C2: MARRIED DAUGHTERS (owned) — editable ═ */}
+              <AdminMDBlock memberId={currentId} daughters={detail.married_daughters || []} supabase={supabase} lang={lang} onRefresh={() => fetchDetail(currentId)} />
 
               {/* ══════ SECTION C3: SASURAL (linked — daughter view) ══ */}
               {detail.sasural_details && detail.sasural_details.length > 0 && (
@@ -1537,6 +1518,292 @@ export default function AdminMemberDetail({
 /* ═══════════════════════════════════════════════════════════════════════
    Tree child node (recursive-expandable)
    ═══════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Admin Relatives Block (spouse relatives — edit/add/remove)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }: {
+  spouseId: string; relatives: SpouseRelative[]; supabase: SupabaseClient; lang: Lang; onRefresh: () => void;
+}) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editVals, setEditVals] = useState<Record<string, string>>({});
+  const [editOrig, setEditOrig] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [addVals, setAddVals] = useState<Record<string, string>>({});
+  const [removeId, setRemoveId] = useState<string | null>(null);
+
+  const active = relatives.filter((r) => !r.removed_at);
+  const removed = relatives.filter((r) => r.removed_at);
+
+  function startEdit(r: SpouseRelative) {
+    const vals = initFormVals(r as unknown as Record<string, unknown>, RELATIVE_EDIT_KEYS);
+    setEditVals(vals);
+    setEditOrig({ ...vals });
+    setEditId(r.relative_id);
+    setErrMsg("");
+  }
+
+  async function handleSave() {
+    if (!editId) return;
+    const dirty = dirtyDiff(editVals, editOrig);
+    if (Object.keys(dirty).length === 0) { setEditId(null); return; }
+    setSaving(true);
+    const { error } = await supabase.rpc("admin_update_spouse_relative", { p_relative_id: editId, p_fields: dirty });
+    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    setEditId(null); setSaving(false); onRefresh();
+  }
+
+  async function handleAdd() {
+    setSaving(true);
+    const { error } = await supabase.rpc("add_spouse_relative", {
+      p_spouse_id: spouseId,
+      p_relation_code: addVals.relation_code || "other",
+      p_relation_label: addVals.relation_label || null,
+      p_relation_label_en: addVals.relation_label_en || null,
+      p_full_name: addVals.full_name || null,
+      p_full_name_en: addVals.full_name_en || null,
+      p_addr: addVals.addr || null, p_addr_en: addVals.addr_en || null,
+      p_city: addVals.city || null, p_city_en: addVals.city_en || null,
+      p_mobile: addVals.mobile || null,
+      p_occupation: addVals.occupation || null, p_occupation_en: addVals.occupation_en || null,
+      p_notes: addVals.notes || null, p_notes_en: addVals.notes_en || null,
+    });
+    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
+  }
+
+  async function handleRemove(id: string) {
+    await supabase.rpc("delete_spouse_relative", { p_relative_id: id });
+    setRemoveId(null); onRefresh();
+  }
+
+  async function handleRestore(id: string) {
+    await supabase.rpc("restore_spouse_relative", { p_relative_id: id });
+    onRefresh();
+  }
+
+  if (active.length === 0 && removed.length === 0 && !showAdd) {
+    return (
+      <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family" as TranslationKey, lang)}</p>
+          <button onClick={() => { setShowAdd(true); setAddVals({}); setErrMsg(""); }} className="text-[11px] font-medium text-[var(--gold-deep)]">+ {t("add_relative" as TranslationKey, lang)}</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 border-t border-[var(--hairline)] pt-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("section_wife_family" as TranslationKey, lang)}</p>
+        <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); setErrMsg(""); }} className="text-[11px] font-medium text-[var(--gold-deep)]">{showAdd ? t("cancel", lang) : `+ ${t("add_relative" as TranslationKey, lang)}`}</button>
+      </div>
+      {showAdd && (
+        <div className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-white p-2 space-y-1.5">
+          {RELATIVE_EDIT_KEYS.map((k) => (
+            <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={addVals[k] || ""} onChange={(e) => setAddVals((p) => ({ ...p, [k]: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+          ))}
+          {errMsg && <p className="text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+          <button onClick={handleAdd} disabled={saving} className="min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? "…" : t("add_relative" as TranslationKey, lang)}</button>
+        </div>
+      )}
+      {active.map((r) => {
+        const rName = bi(r.full_name, r.full_name_en, lang);
+        const rLabel = bi(r.relation_label, r.relation_label_en, lang) || "—";
+        return (
+          <div key={r.relative_id} className="mb-1 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-white p-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2"><span className="text-xs font-medium text-[var(--gold-deep)]">{rLabel}</span><span className="text-sm text-[var(--maroon-deep)]">{rName || "—"}</span></div>
+              <div className="flex gap-1.5">
+                <button onClick={() => editId === r.relative_id ? setEditId(null) : startEdit(r)} className="text-[11px] text-[var(--gold-deep)]">{editId === r.relative_id ? t("adm_close_edit", lang) : t("adm_edit_btn", lang)}</button>
+                {removeId === r.relative_id ? (
+                  <><button onClick={() => handleRemove(r.relative_id)} className="text-[11px] text-[var(--maroon)]">{t("adm_confirm_action", lang)}</button><button onClick={() => setRemoveId(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button></>
+                ) : (
+                  <button onClick={() => setRemoveId(r.relative_id)} className="text-[11px] text-[var(--muted)]">✕</button>
+                )}
+              </div>
+            </div>
+            {editId === r.relative_id && (
+              <div className="mt-1.5 border-t border-[var(--hairline)] pt-1.5 grid grid-cols-2 gap-1.5">
+                {RELATIVE_EDIT_KEYS.map((k) => (
+                  <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={editVals[k] || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, [k]: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                ))}
+                {errMsg && <p className="col-span-2 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+                <button onClick={handleSave} disabled={saving} className="col-span-2 min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("adm_saving", lang) : t("adm_save_changes", lang)}</button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {removed.length > 0 && (
+        <details className="mt-1"><summary className="cursor-pointer text-[10px] text-[var(--muted)]">{t("adm_removed_section", lang)} ({removed.length})</summary>
+          {removed.map((r) => (
+            <div key={r.relative_id} className="mt-1 flex items-center justify-between rounded-[var(--r-sm)] border border-dashed border-[var(--muted)]/30 bg-white p-1.5 opacity-60">
+              <span className="text-[11px] text-[var(--muted)]">{bi(r.full_name, r.full_name_en, lang) || "—"}</span>
+              <button onClick={() => handleRestore(r.relative_id)} className="text-[11px] text-[var(--gold-deep)]">{t("adm_restore", lang)}</button>
+            </div>
+          ))}
+        </details>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Admin MD Block (married daughters — edit/add/remove)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
+  memberId: string; daughters: MarriedDaughter[]; supabase: SupabaseClient; lang: Lang; onRefresh: () => void;
+}) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editVals, setEditVals] = useState<Record<string, string>>({});
+  const [editOrig, setEditOrig] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [addVals, setAddVals] = useState<Record<string, string>>({});
+  const [removeId, setRemoveId] = useState<string | null>(null);
+
+  const active = daughters.filter((d) => !d.removed_at);
+  const removed = daughters.filter((d) => d.removed_at);
+
+  function startEdit(d: MarriedDaughter) {
+    const rec = d as unknown as Record<string, unknown>;
+    const vals: Record<string, string> = {};
+    for (const k of MD_EDIT_KEYS) {
+      if (k === "needs_review") vals[k] = rec[k] ? "true" : "false";
+      else vals[k] = String(rec[k] ?? "");
+    }
+    setEditVals(vals);
+    setEditOrig({ ...vals });
+    setEditId(d.md_id);
+    setErrMsg("");
+  }
+
+  async function handleSave() {
+    if (!editId) return;
+    const dirty: Record<string, unknown> = {};
+    for (const k of Object.keys(editVals)) {
+      const newVal = editVals[k]?.trim() ?? "";
+      const origVal = editOrig[k]?.trim() ?? "";
+      if (newVal !== origVal) {
+        if (k === "needs_review") dirty[k] = newVal === "true";
+        else dirty[k] = newVal || null;
+      }
+    }
+    if (Object.keys(dirty).length === 0) { setEditId(null); return; }
+    setSaving(true);
+    const { error } = await supabase.rpc("admin_update_married_daughter", { p_md_id: editId, p_fields: dirty });
+    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    setEditId(null); setSaving(false); onRefresh();
+  }
+
+  async function handleAdd() {
+    setSaving(true);
+    const fields: Record<string, string | null> = {};
+    for (const [k, v] of Object.entries(addVals)) {
+      if (k === "needs_review") continue;
+      if (v.trim()) fields[k] = v.trim();
+    }
+    if (!fields.relation_label) { fields.relation_label = "बेटी/बहन"; fields.relation_label_en = "Daughter/Sister"; }
+    const { error } = await supabase.rpc("add_married_daughter", { p_member_id: memberId, p_fields: fields });
+    if (error) { setErrMsg(error.message); setSaving(false); return; }
+    setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
+  }
+
+  async function handleRemove(id: string) {
+    await supabase.rpc("delete_married_daughter", { p_md_id: id });
+    setRemoveId(null); onRefresh();
+  }
+
+  if (active.length === 0 && removed.length === 0 && !showAdd) {
+    return (
+      <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-base font-semibold text-[var(--maroon)]">बेटी / बहन — Married daughters</h3>
+          <button onClick={() => { setShowAdd(true); setAddVals({}); setErrMsg(""); }} className="text-[11px] font-medium text-[var(--gold-deep)]">+ {t("adm_add_md", lang)}</button>
+        </div>
+      </div>
+    );
+  }
+
+  const addKeys = MD_EDIT_KEYS.filter((k) => k !== "needs_review");
+
+  return (
+    <div className="mb-5 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-display text-base font-semibold text-[var(--maroon)]">बेटी / बहन — Married daughters</h3>
+        <button onClick={() => { setShowAdd(!showAdd); setAddVals({}); setErrMsg(""); }} className="text-[11px] font-medium text-[var(--gold-deep)]">{showAdd ? t("cancel", lang) : `+ ${t("adm_add_md", lang)}`}</button>
+      </div>
+      {showAdd && (
+        <div className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5 grid grid-cols-2 gap-1.5">
+          {addKeys.map((k) => (
+            <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={addVals[k] || ""} onChange={(e) => setAddVals((p) => ({ ...p, [k]: e.target.value }))} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+          ))}
+          {errMsg && <p className="col-span-2 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+          <button onClick={handleAdd} disabled={saving} className="col-span-2 min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? "…" : t("adm_add_md", lang)}</button>
+        </div>
+      )}
+      {active.map((d) => {
+        const dName = bi(d.full_name, d.full_name_en, lang);
+        const dHusband = bi(d.husband_name, d.husband_name_en, lang);
+        const dCity = bi(d.city, d.city_en, lang);
+        return (
+          <div key={d.md_id} className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium text-[var(--maroon-deep)]">{dName || "—"}</span>
+                {d.d_member_id && <a href={`/family/${d.d_member_id}`} className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.12)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--gold-deep)] hover:underline">{d.d_member_id}</a>}
+                {dHusband && <span className="text-[11px] text-[var(--muted)]">· पति: {dHusband}</span>}
+                {dCity && <span className="text-[11px] text-[var(--muted)]">· {dCity}</span>}
+                {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">Review</span>}
+              </div>
+              <div className="flex gap-1.5">
+                <button onClick={() => editId === d.md_id ? setEditId(null) : startEdit(d)} className="text-[11px] text-[var(--gold-deep)]">{editId === d.md_id ? t("adm_close_edit", lang) : t("adm_edit_btn", lang)}</button>
+                {removeId === d.md_id ? (
+                  <><button onClick={() => handleRemove(d.md_id)} className="text-[11px] text-[var(--maroon)]">{t("adm_confirm_action", lang)}</button><button onClick={() => setRemoveId(null)} className="text-[11px] text-[var(--muted)]">{t("cancel", lang)}</button></>
+                ) : (
+                  <button onClick={() => setRemoveId(d.md_id)} className="text-[11px] text-[var(--muted)]">✕</button>
+                )}
+              </div>
+            </div>
+            {editId === d.md_id && (
+              <div className="mt-1.5 border-t border-[var(--hairline)] pt-1.5 grid grid-cols-2 gap-1.5">
+                {MD_EDIT_KEYS.map((k) => (
+                  k === "needs_review" ? (
+                    <div key={k} className="col-span-2 flex items-center gap-2">
+                      <label className="text-[10px] text-[var(--muted)]">{t("adm_needs_review", lang)}</label>
+                      <input type="checkbox" checked={editVals[k] === "true"} onChange={(e) => setEditVals((p) => ({ ...p, [k]: e.target.checked ? "true" : "false" }))} className="h-3.5 w-3.5" />
+                    </div>
+                  ) : (
+                    <div key={k}><label className="block text-[10px] text-[var(--muted)]">{k}</label><input type="text" value={editVals[k] || ""} onChange={(e) => { setErrMsg(""); setEditVals((p) => ({ ...p, [k]: e.target.value })); }} className={INPUT_CLS + " !min-h-[32px] !text-xs"} /></div>
+                  )
+                ))}
+                {errMsg && <p className="col-span-2 text-[11px] text-[var(--maroon)]">{errMsg}</p>}
+                <button onClick={handleSave} disabled={saving} className="col-span-2 min-h-[28px] rounded-[var(--r-sm)] bg-[var(--maroon)] px-3 py-1 text-[11px] font-medium text-[var(--ivory)] disabled:opacity-50">{saving ? t("adm_saving", lang) : t("adm_save_changes", lang)}</button>
+                {d.source_raw && <p className="col-span-2 font-mono text-[10px] text-[var(--muted)] break-all">{d.source_raw}</p>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {removed.length > 0 && (
+        <details className="mt-2"><summary className="cursor-pointer text-[10px] text-[var(--muted)]">{t("adm_removed_section", lang)} ({removed.length})</summary>
+          {removed.map((d) => (
+            <div key={d.md_id} className="mt-1 flex items-center justify-between rounded-[var(--r-sm)] border border-dashed border-[var(--muted)]/30 bg-[var(--cream)] p-1.5 opacity-60">
+              <span className="text-[11px] line-through text-[var(--muted)]">{bi(d.full_name, d.full_name_en, lang) || "—"} <span className="text-[9px]">({d.removed_at})</span></span>
+            </div>
+          ))}
+        </details>
+      )}
+    </div>
+  );
+}
 
 function TreeChildNode({
   node,

@@ -409,6 +409,8 @@ const translations = {
   adm_block_editing: { en: "Block editing", hi: "संपादन बंद करें" },
   adm_edit_block_confirm: { en: "Are you sure you want to change editing permission for this member?", hi: "क्या आप इस सदस्य की संपादन अनुमति बदलना चाहते हैं?" },
   adm_daughter_edit_note: { en: "Married daughters are blocked by default; unblock to let her edit her own details.", hi: "विवाहित बेटियों का संपादन डिफ़ॉल्ट रूप से बंद है; उन्हें अपना विवरण संपादित करने की अनुमति दें।" },
+  adm_add_md: { en: "Add daughter/sister", hi: "बेटी/बहन जोड़ें" },
+  adm_needs_review: { en: "Needs review", hi: "समीक्षा आवश्यक" },
   edit_blocked_banner: { en: "Editing is currently disabled — please contact the admin", hi: "संपादन अभी बंद है — कृपया व्यवस्थापक से संपर्क करें" },
 
   // Navigation (More menu + History)
