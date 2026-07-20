@@ -53,7 +53,8 @@ export async function proxy(request: NextRequest) {
     pathname === "/login" ||
     pathname === "/register" ||
     pathname === "/reset-password" ||
-    pathname === "/admin/login";
+    pathname === "/admin/login" ||
+    pathname.startsWith("/api/transliterate/");
 
   // Pages that bounce signed-in users to / (NOT /admin/login — non-admins need it)
   const bounceWhenSignedIn =

@@ -158,12 +158,12 @@ export async function transliterateWord(word: string): Promise<string | null> {
     return HI_DICTIONARY[key];
   }
 
-  // API call
+  // API call (proxied through our own route to avoid CORS blocks)
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(
-      `https://xlit-api.ai4bharat.org/tl/hi/${encodeURIComponent(key)}`,
+      `/api/transliterate/hi/${encodeURIComponent(key)}`,
       { signal: controller.signal },
     );
     clearTimeout(timer);
@@ -171,8 +171,9 @@ export async function transliterateWord(word: string): Promise<string | null> {
       // Server error — do NOT cache (transient), allow retry next call
       return null;
     }
-    const json = (await res.json()) as { result?: string[] };
-    const result = json.result?.[0] ?? null;
+    const json = (await res.json()) as { result?: string[] | string };
+    const raw = json.result;
+    const result = Array.isArray(raw) ? raw[0] ?? null : raw ?? null;
     // Only cache when the API actually responded — null here means "no suggestion"
     cache.set(key, result);
     return result;
