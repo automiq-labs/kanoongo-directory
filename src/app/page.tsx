@@ -8,9 +8,9 @@ export default async function DirectoryPage() {
   const { data: members } = await supabase
     .from("members")
     .select(
-      "member_id, full_name, full_name_en, city, city_en, gotra, gotra_en, is_deceased, photo_url"
+      "member_id, full_name, full_name_en, city, city_en, gotra, gotra_en, is_deceased, photo_url, gender, dob, marital_status, sort_seq"
     )
-    .order("full_name");
+    .order("sort_seq");
 
   return <DirectoryClient members={(members as Member[]) || []} />;
 }
