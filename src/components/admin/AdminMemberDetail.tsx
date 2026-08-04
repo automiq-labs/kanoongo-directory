@@ -7,6 +7,7 @@ import { t, type Lang, type TranslationKey } from "@/lib/translations";
 import type { SpouseRelative, MarriedDaughter } from "@/lib/types";
 import { bi } from "@/lib/bilingual";
 import { transliteratePhrase, useAutoHindi, sweepAutoHindi } from "@/lib/transliterate";
+import { removeSpouseRelatives } from "@/lib/spouse-cascade";
 import { RELATION_OPTIONS } from "@/lib/form-options";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -682,7 +683,10 @@ export default function AdminMemberDetail({
 
   async function handleRemoveSpouse(id: string) {
     setActionLoading(true);
-    await supabase.rpc("delete_spouse", { p_spouse_id: id });
+    const { error: err } = await supabase.rpc("delete_spouse", { p_spouse_id: id });
+    if (err) console.error("delete_spouse failed:", err);
+    // Her relatives belong to her branch — take them down with her.
+    else await removeSpouseRelatives(supabase, id);
     setRemoveSpouseConfirm(null);
     await fetchDetail(currentId);
     onRefresh();

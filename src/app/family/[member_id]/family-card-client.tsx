@@ -9,6 +9,7 @@ import { t, type Lang } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
 import { createClient } from "@/lib/supabase/client";
 import { useAutoHindi, sweepAutoHindi, transliteratePhrase } from "@/lib/transliterate";
+import { removeSpouseRelatives } from "@/lib/spouse-cascade";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
@@ -1214,6 +1215,8 @@ export default function FamilyCardClient({
         setToast({ type: "error", msg: t("save_error", lang) });
         return;
       }
+      // Her relatives belong to her branch — take them down with her.
+      await removeSpouseRelatives(supabase, spouseId);
       setRemoveSpouseConfirm(null);
       router.refresh();
     } catch (err) {

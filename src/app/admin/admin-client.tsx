@@ -10,6 +10,8 @@ import LanguageToggle from "@/app/language-toggle";
 import AdminMemberDetail from "@/components/admin/AdminMemberDetail";
 import AdminActivityFeed from "@/components/admin/AdminActivityFeed";
 import AdminActivityPopup from "@/components/admin/AdminActivityPopup";
+import AdminDaughtersPopup, { type DaughterRow } from "@/components/admin/AdminDaughtersPopup";
+import { parseAge, ageGroup, type AgeGroup } from "@/lib/age";
 import {
   getNotices,
   postNotice,
@@ -65,6 +67,18 @@ interface MemberRow {
 
 type MemberFilter = "all" | "claimed" | "unclaimed" | "incomplete" | "complete" | "deceased" | "blocked";
 
+/** Book order is the default — it matches the printed directory. */
+type MemberSort = "book" | "last_login" | "oldest" | "youngest";
+
+type AgeFilter = "all" | AgeGroup;
+
+/** Live married-daughter counts + rows. Read directly from the tables — the
+ *  dashboard RPC does not carry them and this batch adds no RPC surface. */
+interface DaughterStats {
+  all: DaughterRow[];
+  claimed: DaughterRow[];
+}
+
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
 
 function relativeTime(iso: string | null, lang: string): string {
@@ -111,13 +125,48 @@ export default function AdminClient() {
   // ── Dashboard ──────────────────────────────────────────────────────
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
+  const [daughters, setDaughters] = useState<DaughterStats>({ all: [], claimed: [] });
+
+  /** Live married daughters + the subset whose D-member has claimed a login.
+   *  Both come from plain table reads (authenticated SELECT is open on
+   *  married_daughters and families) so no RPC has to change. */
+  const loadDaughters = useCallback(async () => {
+    const [{ data: mdData, error: mdError }, { data: famData, error: famError }] = await Promise.all([
+      supabase
+        .from("married_daughters")
+        .select("md_id, d_member_id, full_name, full_name_en, city, city_en, mobile")
+        .is("removed_at", null)
+        .order("sort_seq", { ascending: true, nullsFirst: false }),
+      supabase
+        .from("families")
+        .select("head_member_id")
+        .not("auth_user_id", "is", null),
+    ]);
+
+    if (mdError || famError) {
+      console.error("married daughters load failed:", mdError || famError);
+      return;
+    }
+
+    const all = (mdData as DaughterRow[] | null) ?? [];
+    const claimedHeads = new Set(
+      ((famData as { head_member_id: string | null }[] | null) ?? [])
+        .map((f) => f.head_member_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    setDaughters({
+      all,
+      claimed: all.filter((d) => d.d_member_id && claimedHeads.has(d.d_member_id)),
+    });
+  }, [supabase]);
 
   const loadDashboard = useCallback(async () => {
     setDashLoading(true);
     const { data, error } = await supabase.rpc("admin_get_dashboard");
     if (!error && data) setDashboard(data as DashboardData);
+    await loadDaughters();
     setDashLoading(false);
-  }, [supabase]);
+  }, [supabase, loadDaughters]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetching effect, setState in async callback
@@ -125,15 +174,24 @@ export default function AdminClient() {
   }, [authed, tab, loadDashboard]);
 
   // ── Members ────────────────────────────────────────────────────────
+  // The RPC filters + searches server-side; sorting and the age facet are
+  // applied here, so the whole matching set is fetched in one call (same
+  // p_limit the CSV export already uses) and paged client-side.
   const [memberRows, setMemberRows] = useState<MemberRow[]>([]);
-  const [memberTotal, setMemberTotal] = useState(0);
   const [memberSearch, setMemberSearch] = useState("");
   const [memberFilter, setMemberFilter] = useState<MemberFilter>("all");
+  const [memberSort, setMemberSort] = useState<MemberSort>("book");
+  const [memberAge, setMemberAge] = useState<AgeFilter>("all");
   const [memberPage, setMemberPage] = useState(0);
   const [memberLoading, setMemberLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const PAGE_SIZE = 50;
+  const FETCH_LIMIT = 10000;
+
+  /** member_id → sort_seq (printed-book order). The members list RPC does not
+   *  return sort_seq, so it is read once straight from the table. */
+  const [sortSeqById, setSortSeqById] = useState<Record<string, number | null>>({});
 
   // Detail panel
   const [detailMemberId, setDetailMemberId] = useState<string | null>(null);
@@ -141,22 +199,21 @@ export default function AdminClient() {
   // Activity popup (signups/logins drill-down from dashboard cards)
   const [popupAction, setPopupAction] = useState<"signup" | "login" | null>(null);
 
-  // Notices section ref for scroll-to
-  const noticesSectionRef = useRef<HTMLDivElement>(null);
+  // Married-daughters popup (drill-down from dashboard cards)
+  const [daughterPopup, setDaughterPopup] = useState<"all" | "claimed" | null>(null);
 
   const loadMembers = useCallback(
-    async (search: string, filter: MemberFilter, page: number) => {
+    async (search: string, filter: MemberFilter) => {
       setMemberLoading(true);
       const { data, error } = await supabase.rpc("admin_list_members", {
         p_search: search.trim() || null,
         p_filter: filter,
-        p_limit: PAGE_SIZE,
-        p_offset: page * PAGE_SIZE,
+        p_limit: FETCH_LIMIT,
+        p_offset: 0,
       });
       if (!error && data) {
         const d = data as { total: number; rows: MemberRow[] };
         setMemberRows(d.rows);
-        setMemberTotal(d.total);
       }
       setMemberLoading(false);
     },
@@ -165,15 +222,82 @@ export default function AdminClient() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetching effect, setState in async callback
-    if (authed && tab === "members") loadMembers(memberSearch, memberFilter, memberPage);
-  }, [authed, tab, memberFilter, memberPage, loadMembers]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (authed && tab === "members") loadMembers(memberSearch, memberFilter);
+  }, [authed, tab, memberFilter, loadMembers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Book order lookup — loaded once, independent of search/filter/paging.
+  useEffect(() => {
+    if (!authed) return;
+    let cancelled = false;
+    async function loadSortSeq() {
+      const { data, error } = await supabase.from("members").select("member_id, sort_seq");
+      if (cancelled || error || !data) return;
+      const map: Record<string, number | null> = {};
+      for (const row of data as { member_id: string; sort_seq: number | null }[]) {
+        map[row.member_id] = row.sort_seq;
+      }
+      setSortSeqById(map);
+    }
+    loadSortSeq();
+    return () => { cancelled = true; };
+  }, [authed, supabase]);
+
+  /** Age facet + sort, applied on top of the server-side chips and search. */
+  const visibleMembers = useMemo(() => {
+    let result = memberRows;
+
+    if (memberAge !== "all") {
+      result = result.filter((r) => ageGroup(r.dob, r.is_deceased) === memberAge);
+    }
+
+    const seq = (id: string) => sortSeqById[id] ?? Infinity;
+    const sorted = [...result];
+    if (memberSort === "book") {
+      sorted.sort((a, b) => seq(a.member_id) - seq(b.member_id) || a.member_id.localeCompare(b.member_id));
+    } else if (memberSort === "last_login") {
+      // Never-signed-in members sort last, then book order among themselves.
+      sorted.sort((a, b) => {
+        const aT = a.last_sign_in_at ? new Date(a.last_sign_in_at).getTime() : null;
+        const bT = b.last_sign_in_at ? new Date(b.last_sign_in_at).getTime() : null;
+        if (aT !== null && bT !== null) return bT - aT;
+        if (aT !== null) return -1;
+        if (bT !== null) return 1;
+        return seq(a.member_id) - seq(b.member_id);
+      });
+    } else {
+      // oldest / youngest — deceased or missing dob sort LAST, secondary: book order
+      const sign = memberSort === "oldest" ? 1 : -1;
+      sorted.sort((a, b) => {
+        const ageA = a.is_deceased ? null : parseAge(a.dob);
+        const ageB = b.is_deceased ? null : parseAge(b.dob);
+        if (ageA !== null && ageB !== null) return sign * (ageB - ageA); // higher age = older
+        if (ageA !== null) return -1;
+        if (ageB !== null) return 1;
+        return seq(a.member_id) - seq(b.member_id);
+      });
+    }
+    return sorted;
+  }, [memberRows, memberAge, memberSort, sortSeqById]);
+
+  const memberTotal = visibleMembers.length;
+  const totalPages = Math.max(1, Math.ceil(memberTotal / PAGE_SIZE));
+  const pageRows = useMemo(
+    () => visibleMembers.slice(memberPage * PAGE_SIZE, memberPage * PAGE_SIZE + PAGE_SIZE),
+    [visibleMembers, memberPage],
+  );
+
+  // Keep the page in range when the visible set shrinks (age facet, new search…)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clamps paging to the current result set
+    if (memberPage > totalPages - 1) setMemberPage(0);
+  }, [memberPage, totalPages]);
 
   function handleSearchChange(value: string) {
     setMemberSearch(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setMemberPage(0);
-      loadMembers(value, memberFilter, 0);
+      loadMembers(value, memberFilter);
     }, 300);
   }
 
@@ -187,9 +311,10 @@ export default function AdminClient() {
     setMemberFilter(f);
     setMemberPage(0);
     setMemberSearch("");
+    setMemberAge("all");
     setTab("members");
     // Trigger a fresh load for the new filter
-    loadMembers("", f, 0);
+    loadMembers("", f);
   }
 
   function dashStatCards(d: DashboardData) {
@@ -199,9 +324,9 @@ export default function AdminClient() {
       { label: t("adm_stat_complete", lang), value: d.profiles_complete, id: "complete" as const },
       { label: t("adm_stat_incomplete", lang), value: d.claimed_incomplete, highlight: true, id: "incomplete" as const },
       { label: t("adm_stat_signups_7d", lang), value: d.signups_7d, id: "signups" as const },
-      { label: t("adm_stat_logins_7d", lang), value: d.logins_7d, id: "logins" as const },
+      { label: t("adm_stat_married_daughters", lang), value: daughters.all.length, id: "daughters" as const },
       { label: t("adm_stat_deceased", lang), value: d.deceased, id: "deceased" as const },
-      { label: t("adm_stat_notices", lang), value: d.notices, id: "notices" as const },
+      { label: t("adm_stat_claimed_daughters", lang), value: daughters.claimed.length, id: "daughters_claimed" as const },
     ];
   }
 
@@ -213,11 +338,8 @@ export default function AdminClient() {
       case "incomplete": goToMembersWithFilter("incomplete"); break;
       case "deceased": goToMembersWithFilter("deceased"); break;
       case "signups": setPopupAction("signup"); break;
-      case "logins": setPopupAction("login"); break;
-      case "notices":
-        setTab("settings");
-        setTimeout(() => noticesSectionRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-        break;
+      case "daughters": setDaughterPopup("all"); break;
+      case "daughters_claimed": setDaughterPopup("claimed"); break;
     }
   }
 
@@ -229,23 +351,13 @@ export default function AdminClient() {
     return `"${s.replace(/"/g, '""')}"`;
   }
 
-  async function handleExportCSV() {
+  function handleExportCSV() {
     setExporting(true);
-    const { data, error } = await supabase.rpc("admin_list_members", {
-      p_search: memberSearch.trim() || null,
-      p_filter: memberFilter,
-      p_limit: 10000,
-      p_offset: 0,
-    });
-    if (error) {
-      setExporting(false);
-      window.alert(lang === "en" ? "Export failed — please try again" : "निर्यात विफल — कृपया पुनः प्रयास करें");
-      return;
-    }
-    if (data) {
-      const d = data as { total: number; rows: MemberRow[] };
+    try {
+      // Exports exactly what the admin is looking at — chips + search + age
+      // facet + the chosen sort order.
       const header = "member_id,name_hindi,name_english,city,mobile_1,mobile_2,claimed,claim_email,profile_complete,last_sign_in";
-      const csvRows = d.rows.map((r) =>
+      const csvRows = visibleMembers.map((r) =>
         [
           csvSafe(r.member_id),
           csvSafe(r.full_name),
@@ -268,8 +380,12 @@ export default function AdminClient() {
       a.download = `kanoongo-members-${today}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("CSV export failed:", err);
+      window.alert(lang === "en" ? "Export failed — please try again" : "निर्यात विफल — कृपया पुनः प्रयास करें");
+    } finally {
+      setExporting(false);
     }
-    setExporting(false);
   }
 
   async function handleToggleEditBlocked(memberId: string, currentBlocked: boolean) {
@@ -312,6 +428,9 @@ export default function AdminClient() {
   // Delete notice
   const [deleteNoticeId, setDeleteNoticeId] = useState<string | null>(null);
   const [deletingNotice, setDeletingNotice] = useState(false);
+
+  // Expanded notice (full read view)
+  const [openNoticeId, setOpenNoticeId] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     // Load invite code
@@ -400,7 +519,6 @@ export default function AdminClient() {
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(memberTotal / PAGE_SIZE));
   const NOTICE_CATEGORIES: NoticeCategory[] = ["wedding", "birth", "death", "gathering", "general"];
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
@@ -435,6 +553,25 @@ export default function AdminClient() {
     { key: "deceased", label: t("adm_filter_deceased", lang) },
     { key: "blocked", label: t("adm_filter_blocked", lang) },
   ];
+
+  const sortOptions: { value: MemberSort; label: string }[] = [
+    { value: "book", label: t("sort_book_order", lang) },
+    { value: "last_login", label: t("sort_last_login", lang) },
+    { value: "oldest", label: t("sort_oldest", lang) },
+    { value: "youngest", label: t("sort_youngest", lang) },
+  ];
+
+  const ageOptions: { value: AgeFilter; label: string }[] = [
+    { value: "all", label: `${t("filter_age", lang)}: ${t("filter_all", lang)}` },
+    { value: "under18", label: t("age_under_18", lang) },
+    { value: "18-40", label: t("age_18_40", lang) },
+    { value: "40-60", label: t("age_40_60", lang) },
+    { value: "60+", label: t("age_60_plus", lang) },
+    { value: "unknown", label: t("age_unknown", lang) },
+  ];
+
+  const selectClass =
+    "min-h-[44px] w-full appearance-none rounded-[var(--r-sm)] border border-[#ECE0C8] bg-[var(--raised)] px-3 pr-8 py-1.5 text-sm font-medium text-[var(--maroon)] cursor-pointer focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)]";
 
   const inputClass =
     "min-h-[44px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-sm text-[var(--maroon-deep)] placeholder-[var(--muted)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none";
@@ -604,6 +741,40 @@ export default function AdminClient() {
               </button>
             </div>
 
+            {/* Sort + age facet — combinable with the chips and the search box */}
+            <div className="mb-3 flex items-center gap-2">
+              <div className="relative flex-1 min-w-0">
+                <select
+                  value={memberSort}
+                  onChange={(e) => { setMemberSort(e.target.value as MemberSort); setMemberPage(0); }}
+                  aria-label={t("sort_label", lang)}
+                  className={selectClass}
+                >
+                  {sortOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <svg xmlns="http://www.w3.org/2000/svg" className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+              <div className="relative flex-1 min-w-0">
+                <select
+                  value={memberAge}
+                  onChange={(e) => { setMemberAge(e.target.value as AgeFilter); setMemberPage(0); }}
+                  aria-label={t("filter_age", lang)}
+                  className={`${selectClass} ${memberAge !== "all" ? "border-[var(--gold)] ring-1 ring-[var(--gold)]/30" : ""}`}
+                >
+                  {ageOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <svg xmlns="http://www.w3.org/2000/svg" className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
             {/* Filter chips */}
             <div className="mb-4 flex flex-wrap gap-2">
               {filterChips.map((fc) => (
@@ -640,13 +811,13 @@ export default function AdminClient() {
                   </div>
                 ))}
               </div>
-            ) : memberRows.length === 0 ? (
+            ) : pageRows.length === 0 ? (
               <div className="rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-8 text-center">
                 <p className="text-[var(--muted)]">{t("adm_no_results", lang)}</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {memberRows.map((row) => {
+                {pageRows.map((row) => {
                   const name = bi(row.full_name, row.full_name_en, lang);
                   const city = bi(row.city, row.city_en, lang);
                   return (
@@ -822,7 +993,7 @@ export default function AdminClient() {
             </div>
 
             {/* Notices */}
-            <div ref={noticesSectionRef} className="rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-5 shadow-card">
+            <div className="rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-5 shadow-card">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="font-display text-base font-semibold text-[var(--maroon)]">
                   {t("adm_notices_title", lang)}
@@ -940,51 +1111,103 @@ export default function AdminClient() {
                 <div className="space-y-2">
                   {notices.map((notice) => {
                     const title = bi(notice.title, notice.title_en, lang);
+                    const body = bi(notice.body, notice.body_en, lang);
+                    const poster = bi(notice.poster_name, notice.poster_name_en, lang);
                     const meta = CATEGORY_META[notice.category];
+                    const expanded = openNoticeId === notice.id;
                     return (
                       <div
                         key={notice.id}
-                        className="flex items-start justify-between rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-3"
+                        className="rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)]"
                       >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-xs">{meta.icon}</span>
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                              {lang === "en" ? meta.labelEn : meta.labelHi}
-                            </span>
-                          </div>
-                          <p className="text-sm font-medium text-[var(--maroon-deep)]">{title}</p>
-                          {notice.event_date && (
-                            <p className="mt-0.5 text-[11px] text-[var(--muted)]">{notice.event_date}</p>
-                          )}
-                        </div>
-                        <div className="ml-3 shrink-0">
-                          {deleteNoticeId === notice.id ? (
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => setDeleteNoticeId(null)}
-                                disabled={deletingNotice}
-                                className="rounded-[var(--r-sm)] border border-[var(--hairline)] px-2 py-1 text-[11px] text-[var(--muted)] disabled:opacity-50"
-                              >
-                                {t("cancel", lang)}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteNotice(notice.id)}
-                                disabled={deletingNotice}
-                                className="rounded-[var(--r-sm)] bg-[var(--maroon)] px-2 py-1 text-[11px] text-[var(--ivory)] disabled:opacity-50"
-                              >
-                                {t("adm_confirm_action", lang)}
-                              </button>
+                        <div className="flex items-start justify-between p-3">
+                          <button
+                            type="button"
+                            onClick={() => setOpenNoticeId(expanded ? null : notice.id)}
+                            aria-expanded={expanded}
+                            aria-controls={`notice-body-${notice.id}`}
+                            aria-label={t("adm_notice_details", lang)}
+                            className="min-w-0 flex-1 rounded-[var(--r-sm)] text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]/50"
+                          >
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-xs">{meta.icon}</span>
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                                {lang === "en" ? meta.labelEn : meta.labelHi}
+                              </span>
                             </div>
-                          ) : (
-                            <button
-                              onClick={() => setDeleteNoticeId(notice.id)}
-                              className="text-[11px] font-medium text-[var(--muted)] hover:text-[var(--maroon)]"
-                            >
-                              {lang === "en" ? "Delete" : "हटाएं"}
-                            </button>
-                          )}
+                            <div className="flex items-center gap-1.5">
+                              <p className="min-w-0 flex-1 text-sm font-medium text-[var(--maroon-deep)]">{title}</p>
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className={`h-4 w-4 shrink-0 text-[var(--muted)] motion-safe:transition-transform motion-safe:duration-[var(--dur-fast)] ${expanded ? "rotate-180" : ""}`}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
+                            {notice.event_date && (
+                              <p className="mt-0.5 text-[11px] text-[var(--muted)]">{notice.event_date}</p>
+                            )}
+                          </button>
+                          <div className="ml-3 shrink-0">
+                            {deleteNoticeId === notice.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => setDeleteNoticeId(null)}
+                                  disabled={deletingNotice}
+                                  className="rounded-[var(--r-sm)] border border-[var(--hairline)] px-2 py-1 text-[11px] text-[var(--muted)] disabled:opacity-50"
+                                >
+                                  {t("cancel", lang)}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteNotice(notice.id)}
+                                  disabled={deletingNotice}
+                                  className="rounded-[var(--r-sm)] bg-[var(--maroon)] px-2 py-1 text-[11px] text-[var(--ivory)] disabled:opacity-50"
+                                >
+                                  {t("adm_confirm_action", lang)}
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setDeleteNoticeId(notice.id)}
+                                className="text-[11px] font-medium text-[var(--muted)] hover:text-[var(--maroon)]"
+                              >
+                                {lang === "en" ? "Delete" : "हटाएं"}
+                              </button>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Full read view */}
+                        {expanded && (
+                          <div
+                            id={`notice-body-${notice.id}`}
+                            className="border-t border-[#EFE4CD] px-3 py-3"
+                          >
+                            <p className="whitespace-pre-wrap text-sm text-[var(--maroon-deep)]">
+                              {body || <span className="text-[var(--muted)]">{t("adm_notice_no_body", lang)}</span>}
+                            </p>
+                            <div className="mt-3 space-y-0.5 text-[11px] text-[var(--muted)]">
+                              {notice.event_date && (
+                                <p>
+                                  {t("adm_notices_event_date", lang)}: {notice.event_date}
+                                </p>
+                              )}
+                              <p>
+                                {t("adm_notice_posted", lang)}:{" "}
+                                {new Date(notice.created_at).toLocaleDateString(
+                                  lang === "en" ? "en-IN" : "hi-IN",
+                                  { year: "numeric", month: "short", day: "numeric" },
+                                )}
+                              </p>
+                              {poster && (
+                                <p>
+                                  {t("adm_notice_by", lang)}: {poster}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1002,7 +1225,7 @@ export default function AdminClient() {
           supabase={supabase}
           onClose={() => setDetailMemberId(null)}
           onRefresh={() => {
-            if (tab === "members") loadMembers(memberSearch, memberFilter, memberPage);
+            if (tab === "members") loadMembers(memberSearch, memberFilter);
             if (tab === "dashboard") loadDashboard();
           }}
         />
@@ -1024,6 +1247,20 @@ export default function AdminClient() {
           onClose={() => setPopupAction(null)}
           onOpenMember={(mid) => {
             setPopupAction(null);
+            setDetailMemberId(mid);
+          }}
+        />
+      )}
+
+      {/* ── Married-daughters popup (dashboard card drill-down) ── */}
+      {daughterPopup && (
+        <AdminDaughtersPopup
+          rows={daughterPopup === "all" ? daughters.all : daughters.claimed}
+          titleKey={daughterPopup === "all" ? "adm_stat_married_daughters" : "adm_stat_claimed_daughters"}
+          emptyKey={daughterPopup === "all" ? "adm_md_none" : "adm_md_claimed_none"}
+          onClose={() => setDaughterPopup(null)}
+          onOpenMember={(mid) => {
+            setDaughterPopup(null);
             setDetailMemberId(mid);
           }}
         />

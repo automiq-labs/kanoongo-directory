@@ -15,6 +15,7 @@ import { FooterCredits } from "@/components/FooterCredits";
 import GotraSelect from "@/components/form/GotraSelect";
 import DateField from "@/components/form/DateField";
 import PhoneField from "@/components/form/PhoneField";
+import { transliteratePhrase } from "@/lib/transliterate";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -383,9 +384,24 @@ export default function RegisterPage() {
         }
       }
 
+      // Hindi columns must hold Devanagari. The admin editors transliterate on
+      // save; do the same here so registrations don't land Latin text in
+      // full_name. Typed-in Devanagari passes through untouched (and leaves
+      // full_name_en null, matching the editors). If the transliteration API is
+      // unreachable we fall back to the previous behaviour — Latin in both —
+      // rather than blocking the registration.
       const nameTrimmed = fullName.trim();
-      const p_name = nameTrimmed;
-      const p_name_en = isLatin(nameTrimmed) ? nameTrimmed : null;
+      let p_name = nameTrimmed;
+      let p_name_en: string | null = null;
+      if (isLatin(nameTrimmed)) {
+        p_name_en = nameTrimmed;
+        try {
+          const hindi = await transliteratePhrase(nameTrimmed);
+          if (hindi) p_name = hindi;
+        } catch (err) {
+          console.error("name transliteration failed, keeping Latin:", err);
+        }
+      }
 
       const { error: rpcError } = await supabase.rpc("complete_registration", {
         p_name,
@@ -421,7 +437,14 @@ export default function RegisterPage() {
         try {
           const optPayload: Record<string, string> = {};
           if (gender) optPayload.gender = gender;
-          if (regGotra) optPayload.gotra = regGotra;
+          // "Other" gotra is free text — sweep the Hindi side the same way the
+          // editors do when only the English box was filled in.
+          let gotraHi = regGotra;
+          if (regGotraEn && !gotraHi) {
+            const hindi = await transliteratePhrase(regGotraEn);
+            if (hindi) gotraHi = hindi;
+          }
+          if (gotraHi) optPayload.gotra = gotraHi;
           if (regGotraEn) optPayload.gotra_en = regGotraEn;
           if (regDob) optPayload.dob = regDob;
           if (regMobile) optPayload.mobile_1 = regMobile;

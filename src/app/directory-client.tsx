@@ -17,6 +17,7 @@ import CelebrationsStrip from "@/components/CelebrationsStrip";
 import WelcomeCard from "@/components/WelcomeCard";
 import OnboardingTour from "@/components/OnboardingTour";
 import type { OnboardingState } from "@/lib/onboarding";
+import { parseAge, ageGroup, type AgeGroup } from "@/lib/age";
 
 type DirectoryMember = Pick<
   Member,
@@ -37,7 +38,7 @@ type DirectoryMember = Pick<
 
 type SortMode = "book" | "name" | "oldest" | "youngest";
 type GenderFilter = "all" | "M" | "F";
-type AgeFilter = "all" | "under18" | "18-40" | "40-60" | "60+" | "unknown";
+type AgeFilter = "all" | AgeGroup;
 type StatusFilter = "all" | "living" | "deceased";
 type MaritalFilter = "all" | "married" | "unmarried";
 
@@ -58,29 +59,6 @@ const DEFAULT_FILTERS: Filters = {
   status: "all",
   marital: "all",
 };
-
-function parseAge(dob: string | null): number | null {
-  if (!dob) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob);
-  if (!m) return null;
-  const birth = new Date(+m[1], +m[2] - 1, +m[3]);
-  if (isNaN(birth.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
-  return age >= 0 ? age : null;
-}
-
-function ageGroup(dob: string | null, isDeceased: boolean): AgeFilter {
-  if (isDeceased) return "unknown";
-  const age = parseAge(dob);
-  if (age === null) return "unknown";
-  if (age < 18) return "under18";
-  if (age < 40) return "18-40";
-  if (age < 60) return "40-60";
-  return "60+";
-}
 
 function activeFilterCount(f: Filters): number {
   let n = 0;
