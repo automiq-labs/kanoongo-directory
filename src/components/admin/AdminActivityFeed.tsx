@@ -85,8 +85,16 @@ function relativeTime(iso: string, lang: string): string {
 
 export default function AdminActivityFeed({
   supabase,
+  decorateMemberName,
 }: {
   supabase: SupabaseClient;
+  /**
+   * Applies the deceased honorific to a member target. Rows only carry
+   * target_name, and admin_get_activity is not changing, so the caller
+   * resolves status from its own members lookup. Non-member targets and
+   * unknown ids come back unchanged.
+   */
+  decorateMemberName: (memberId: string | null, name: string | null) => string | null;
 }) {
   const { lang } = useLang();
   const [rows, setRows] = useState<ActivityRow[]>([]);
@@ -190,10 +198,9 @@ export default function AdminActivityFeed({
             const iconPath =
               ACTION_ICONS[row.action] || ACTION_ICONS["edit"];
             const verbKey = verbKeyFor(row);
-            const targetName = bi(
-              row.target_name,
-              row.target_name_en,
-              lang
+            const targetName = decorateMemberName(
+              row.target_id,
+              bi(row.target_name, row.target_name_en, lang),
             );
 
             // What changed — present only on rows recorded with field data.

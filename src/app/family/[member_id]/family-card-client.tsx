@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useAutoHindi, sweepAutoHindi, transliteratePhrase } from "@/lib/transliterate";
 import { removeSpouseRelatives } from "@/lib/spouse-cascade";
 import { logEditHistory } from "@/lib/edit-history";
+import { memberDisplayName, spouseDisplayName } from "@/lib/display-name";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
@@ -1529,7 +1530,9 @@ export default function FamilyCardClient({
 
   // ── Derived display values ──────────────────────────────────────────────
 
+  // `name` stays raw — it feeds the avatar initial and the edit form.
   const name = bi(m.full_name, m.full_name_en, lang);
+  const displayName = memberDisplayName(m, lang);
   const gotra = bi(m.gotra, m.gotra_en, lang);
   const education = bi(m.education, m.education_en, lang);
   const occupation = bi(m.occupation, m.occupation_en, lang);
@@ -1671,7 +1674,7 @@ export default function FamilyCardClient({
               ) : (
                 <>
                   <h2 className="font-display text-xl font-semibold leading-snug text-[var(--maroon-deep)]">
-                    {name}
+                    {displayName}
                   </h2>
                   {m.is_deceased && (
                     <span className="mt-1 inline-block text-[11px] font-medium uppercase tracking-wider text-[var(--gold-deep)]">
@@ -1954,7 +1957,9 @@ export default function FamilyCardClient({
               💑 {t("section_spouse", lang)}
             </SectionTitle>
             {spouses.map((s, idx) => {
+              // `sName` stays raw — avatar initial + edit form.
               const sName = bi(s.full_name, s.full_name_en, lang);
+              const sDisplayName = spouseDisplayName(s, lang);
               const edits = spouseEdits[idx];
 
               return (
@@ -1999,7 +2004,7 @@ export default function FamilyCardClient({
                         />
                       </div>
                     ) : (
-                      <p className="font-display font-semibold text-[var(--maroon-deep)]">{sName}</p>
+                      <p className="font-display font-semibold text-[var(--maroon-deep)]">{sDisplayName}</p>
                     )}
                   </div>
 
@@ -2049,7 +2054,7 @@ export default function FamilyCardClient({
                       {canEditEffective && (
                         removeSpouseConfirm === s.spouse_id ? (
                           <div className="mt-2 flex items-center gap-2">
-                            <span className="flex-1 text-sm text-[var(--maroon-deep)]">Remove {sName}?</span>
+                            <span className="flex-1 text-sm text-[var(--maroon-deep)]">Remove {sDisplayName}?</span>
                             <button
                               type="button"
                               onClick={() => setRemoveSpouseConfirm(null)}
@@ -2194,7 +2199,9 @@ export default function FamilyCardClient({
                 if (entry.source === "member") {
                   // ── MEMBER-CHILD (registered, tappable) ──
                   const mc = entry.data;
+                  // `mcName` stays raw — avatar initial.
                   const mcName = bi(mc.full_name, mc.full_name_en, lang);
+                  const mcDisplayName = memberDisplayName(mc, lang);
                   const mcGender = mc.gender;
                   return (
                     <Link
@@ -2204,7 +2211,7 @@ export default function FamilyCardClient({
                     >
                       <PhotoAvatar photoUrl={mc.photo_url} previewUrl={null} fallbackInitial={mcName?.charAt(0) || "?"} editing={false} size="sm" />
                       <div className="min-w-0 flex-1">
-                        <p className={`font-display font-semibold ${mc.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>{mcName}</p>
+                        <p className={`font-display font-semibold ${mc.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>{mcDisplayName}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--muted)]">
                           {mcGender && <span>{mcGender === "M" ? t("son", lang) : t("daughter", lang)}</span>}
                           {mcGender && mc.dob && <span className="inline-block h-[3px] w-[3px] rounded-full bg-[var(--gold)] opacity-80" />}
@@ -2491,7 +2498,7 @@ export default function FamilyCardClient({
             </p>
 
             {spouses.map((s) => {
-              const sN = bi(s.full_name, s.full_name_en, lang);
+              const sN = spouseDisplayName(s, lang);
               return (
                 <div key={s.spouse_id} className="flex items-center justify-between border-b border-[var(--hairline)] py-2 last:border-0">
                   <span className="text-sm text-[var(--maroon-deep)]">

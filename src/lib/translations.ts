@@ -468,6 +468,10 @@ const translations = {
   adm_login_not_admin: { en: "This account is not an administrator.", hi: "यह खाता प्रशासक नहीं है।" },
   adm_login_member_portal: { en: "Member portal", hi: "सदस्य पोर्टल" },
 
+  // Deceased honorific (derived at render time, never stored in the name)
+  honorific_late: { en: "Late", hi: "स्वर्गीय" },
+  honorific_late_f: { en: "Late", hi: "स्वर्गीया" },
+
   // Login/register archival photo
   login_photo_caption: { en: "The Kanoongo family — from our history", hi: "कानूनगो परिवार — हमारे इतिहास से" },
 

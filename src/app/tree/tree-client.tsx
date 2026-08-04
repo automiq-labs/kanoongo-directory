@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useLang } from "@/lib/language-context";
 import { t } from "@/lib/translations";
-import { bi } from "@/lib/bilingual";
+import { memberDisplayName } from "@/lib/display-name";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
 import { Crest } from "@/components/Crest";
@@ -227,7 +227,7 @@ export default function TreeClient() {
           {!linesLoading && (
             <div className="space-y-2">
               {mainLines.map((line, i) => {
-                const lineName = bi(line.full_name, line.full_name_en, lang);
+                const lineName = memberDisplayName(line, lang);
                 return (
                   <button
                     key={line.root_id}
@@ -263,7 +263,7 @@ export default function TreeClient() {
                     {t("tree_smaller", lang)} ({smallLines.length})
                   </button>
                   {showSmaller && smallLines.map((line) => {
-                    const lineName = bi(line.full_name, line.full_name_en, lang);
+                    const lineName = memberDisplayName(line, lang);
                     return (
                       <button
                         key={line.root_id}
@@ -302,7 +302,7 @@ export default function TreeClient() {
               {breadcrumb.length > 1 && (
                 <nav className="mb-4 flex items-center gap-1 overflow-x-auto text-[12px]">
                   {breadcrumb.map((crumb, i) => {
-                    const crumbName = bi(crumb.full_name, crumb.full_name_en, lang);
+                    const crumbName = memberDisplayName(crumb, lang);
                     const isLast = i === breadcrumb.length - 1;
 
                     // On mobile, collapse middle crumbs if > 3
@@ -350,7 +350,7 @@ export default function TreeClient() {
                     size="lg"
                   />
                   <h2 className={`mt-3 text-center font-display text-xl font-semibold ${focusPerson.is_deceased ? "text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>
-                    {bi(focusPerson.full_name, focusPerson.full_name_en, lang)}
+                    {memberDisplayName(focusPerson, lang)}
                   </h2>
                   {focusPerson.is_deceased && (
                     <span className="mt-1 text-[11px] font-medium uppercase tracking-wider text-[var(--gold-deep)]">
@@ -383,7 +383,7 @@ export default function TreeClient() {
 
                       <div className="space-y-0">
                         {focusChildren.map((child, i) => {
-                          const childName = bi(child.full_name, child.full_name_en, lang);
+                          const childName = memberDisplayName(child, lang);
                           const grandchildCount = (childrenOf.get(child.member_id) || []).length;
                           const hasMore = grandchildCount > 0;
 

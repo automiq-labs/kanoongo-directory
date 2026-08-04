@@ -12,6 +12,7 @@ import AdminActivityFeed from "@/components/admin/AdminActivityFeed";
 import AdminActivityPopup from "@/components/admin/AdminActivityPopup";
 import AdminDaughtersPopup, { type DaughterRow } from "@/components/admin/AdminDaughtersPopup";
 import { parseAge, ageGroup, type AgeGroup } from "@/lib/age";
+import { memberDisplayName } from "@/lib/display-name";
 import {
   getNotices,
   postNotice,
@@ -69,6 +70,14 @@ type MemberFilter = "all" | "claimed" | "unclaimed" | "incomplete" | "complete" 
 
 /** Book order is the default — it matches the printed directory. */
 type MemberSort = "book" | "last_login" | "oldest" | "youngest";
+
+/** One row of the members lookup: book order + deceased-honorific inputs. */
+interface MemberLookupRow {
+  member_id: string;
+  sort_seq: number | null;
+  is_deceased: boolean;
+  gender: string | null;
+}
 
 type AgeFilter = "all" | AgeGroup;
 
@@ -192,6 +201,7 @@ export default function AdminClient() {
   /** member_id → sort_seq (printed-book order). The members list RPC does not
    *  return sort_seq, so it is read once straight from the table. */
   const [sortSeqById, setSortSeqById] = useState<Record<string, number | null>>({});
+  const [memberInfoById, setMemberInfoById] = useState<Record<string, MemberLookupRow>>({});
 
   // Detail panel
   const [detailMemberId, setDetailMemberId] = useState<string | null>(null);
@@ -225,28 +235,46 @@ export default function AdminClient() {
     if (authed && tab === "members") loadMembers(memberSearch, memberFilter);
   }, [authed, tab, memberFilter, loadMembers]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Book order lookup — loaded once, independent of search/filter/paging.
+  // Members lookup — loaded once, independent of search/filter/paging.
+  // Carries book order plus the two fields the deceased honorific needs, since
+  // neither admin_list_members nor admin_get_activity returns gender.
   useEffect(() => {
     if (!authed) return;
     let cancelled = false;
-    async function loadSortSeq() {
+    async function loadMemberLookup() {
       // Explicit ceiling: PostgREST silently caps unbounded selects at 1000
       // rows, which would quietly truncate book order once the directory grows
       // past that. 220 members today — raise this (or page it) before 2000.
       const { data, error } = await supabase
         .from("members")
-        .select("member_id, sort_seq")
+        .select("member_id, sort_seq, is_deceased, gender")
         .limit(2000);
       if (cancelled || error || !data) return;
-      const map: Record<string, number | null> = {};
-      for (const row of data as { member_id: string; sort_seq: number | null }[]) {
-        map[row.member_id] = row.sort_seq;
+      const seqMap: Record<string, number | null> = {};
+      const infoMap: Record<string, MemberLookupRow> = {};
+      for (const row of data as MemberLookupRow[]) {
+        seqMap[row.member_id] = row.sort_seq;
+        infoMap[row.member_id] = row;
       }
-      setSortSeqById(map);
+      setSortSeqById(seqMap);
+      setMemberInfoById(infoMap);
     }
-    loadSortSeq();
+    loadMemberLookup();
     return () => { cancelled = true; };
   }, [authed, supabase]);
+
+  /**
+   * Honorific for a name we only know by member_id — dashboard registrations
+   * and activity-feed targets. Non-members fall through to the raw name.
+   */
+  const decorateMemberName = useCallback(
+    (memberId: string | null | undefined, name: string | null): string | null => {
+      const info = memberId ? memberInfoById[memberId] : undefined;
+      if (!info || !name) return name;
+      return memberDisplayName({ full_name: name, full_name_en: name, ...info }, lang);
+    },
+    [memberInfoById, lang],
+  );
 
   /** Age facet + sort, applied on top of the server-side chips and search. */
   const visibleMembers = useMemo(() => {
@@ -362,7 +390,10 @@ export default function AdminClient() {
     try {
       // Exports exactly what the admin is looking at — chips + search + age
       // facet + the chosen sort order.
-      const header = "member_id,name_hindi,name_english,city,mobile_1,mobile_2,claimed,claim_email,profile_complete,last_sign_in";
+      // Name columns stay exactly as stored — no honorific. `deceased` is a
+      // derived yes/no column alongside claimed/profile_complete, so the
+      // status is exported without contaminating the name values.
+      const header = "member_id,name_hindi,name_english,city,mobile_1,mobile_2,claimed,claim_email,profile_complete,deceased,last_sign_in";
       const csvRows = visibleMembers.map((r) =>
         [
           csvSafe(r.member_id),
@@ -374,6 +405,7 @@ export default function AdminClient() {
           r.claimed ? "yes" : "no",
           csvSafe(r.claim_email),
           r.profile_complete ? "yes" : "no",
+          r.is_deceased ? "yes" : "no",
           r.last_sign_in_at || "",
         ].join(",")
       );
@@ -671,7 +703,9 @@ export default function AdminClient() {
                   ) : (
                     <div className="space-y-2">
                       {dashboard.recent_registrations.map((reg, i) => {
+                        // `name` stays raw — avatar initial.
                         const name = bi(reg.name, reg.name_en, lang);
+                        const displayName = decorateMemberName(reg.member_id, name);
                         return (
                           <button
                             key={i}
@@ -688,7 +722,7 @@ export default function AdminClient() {
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-[var(--maroon-deep)]">
-                                {name || reg.email}
+                                {displayName || reg.email}
                               </p>
                               <p className="truncate text-xs text-[var(--muted)]">{reg.email}</p>
                             </div>
@@ -824,7 +858,13 @@ export default function AdminClient() {
             ) : (
               <div className="space-y-2">
                 {pageRows.map((row) => {
+                  // `name` stays raw — avatar initial.
                   const name = bi(row.full_name, row.full_name_en, lang);
+                  // admin_list_members has no gender; take it from the lookup.
+                  const displayName = memberDisplayName(
+                    { ...row, gender: memberInfoById[row.member_id]?.gender ?? null },
+                    lang,
+                  );
                   const city = bi(row.city, row.city_en, lang);
                   return (
                     <button
@@ -846,7 +886,7 @@ export default function AdminClient() {
                       {/* Info */}
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-display text-[15px] font-semibold text-[var(--maroon-deep)]">
-                          {name}
+                          {displayName}
                         </p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
                           <span>{row.member_id}</span>
@@ -954,7 +994,9 @@ export default function AdminClient() {
         {/* ════════════════════════════════════════════════════════ */}
         {/* ACTIVITY TAB                                            */}
         {/* ════════════════════════════════════════════════════════ */}
-        {tab === "activity" && <AdminActivityFeed supabase={supabase} />}
+        {tab === "activity" && (
+          <AdminActivityFeed supabase={supabase} decorateMemberName={decorateMemberName} />
+        )}
 
         {/* ════════════════════════════════════════════════════════ */}
         {/* SETTINGS TAB                                            */}

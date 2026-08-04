@@ -18,6 +18,7 @@ import WelcomeCard from "@/components/WelcomeCard";
 import OnboardingTour from "@/components/OnboardingTour";
 import type { OnboardingState } from "@/lib/onboarding";
 import { parseAge, ageGroup, type AgeGroup } from "@/lib/age";
+import { memberDisplayName } from "@/lib/display-name";
 
 type DirectoryMember = Pick<
   Member,
@@ -402,7 +403,9 @@ export default function DirectoryClient({
 
           <StaggerList className="space-y-2 sm:space-y-[10px]">
             {filtered.map((member, idx) => {
+              // `name` stays raw — it drives the avatar initial.
               const name = bi(member.full_name, member.full_name_en, lang);
+              const displayName = memberDisplayName(member, lang);
               const city = bi(member.city, member.city_en, lang);
               const gotra = bi(member.gotra, member.gotra_en, lang);
 
@@ -442,7 +445,7 @@ export default function DirectoryClient({
                     {/* Content */}
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-display text-[17px] sm:text-[18px] font-semibold text-[var(--maroon-deep)]">
-                        {name}
+                        {displayName}
                       </p>
                       <div className="mt-[2px] flex flex-wrap items-center gap-x-1.5 text-[13px] text-[var(--muted)]">
                         {member.is_deceased && (

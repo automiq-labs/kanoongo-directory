@@ -10,6 +10,7 @@ import { transliteratePhrase, useAutoHindi, sweepAutoHindi } from "@/lib/transli
 import { removeSpouseRelatives } from "@/lib/spouse-cascade";
 import { logEditHistory } from "@/lib/edit-history";
 import { changedFieldLabels } from "@/lib/field-labels";
+import { memberDisplayName, spouseDisplayName, type MemberNameFields } from "@/lib/display-name";
 import { RELATION_OPTIONS } from "@/lib/form-options";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -918,7 +919,9 @@ export default function AdminMemberDetail({
   }
 
   /* ── Derived ──────────────────────────────────────────────────── */
+  // Raw name — used in the mark-married confirmation and as a fallback.
   const memberName = detail ? bi(detail.member.full_name as string | null, detail.member.full_name_en as string | null, lang) : "";
+  const memberDisplay = detail ? memberDisplayName(detail.member as MemberNameFields, lang) : "";
   const memberGenderIsFemale = isFemaleGender(editValues.gender);
   const activeSpouses = detail?.spouses.filter((s) => !s.removed_at) ?? [];
   const removedSpouses = detail?.spouses.filter((s) => s.removed_at) ?? [];
@@ -985,7 +988,7 @@ export default function AdminMemberDetail({
             <>
               {/* Name & ID */}
               <div className="mb-4">
-                <p className="font-display text-xl font-semibold text-[var(--maroon-deep)]">{memberName}</p>
+                <p className="font-display text-xl font-semibold text-[var(--maroon-deep)]">{memberDisplay}</p>
                 <p className="mt-0.5 text-xs text-[var(--muted)]">{currentId}</p>
               </div>
 
@@ -1183,7 +1186,7 @@ export default function AdminMemberDetail({
                   <div key={sp.spouse_id} className="mb-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium text-[var(--maroon-deep)]">{bi(sp.full_name, sp.full_name_en, lang)}</p>
+                        <p className="text-sm font-medium text-[var(--maroon-deep)]">{spouseDisplayName(sp, lang)}</p>
                         <p className="text-[11px] text-[var(--muted)]">{sp.spouse_id} · {genderLabel(sp.gender, lang)}</p>
                       </div>
                       <div className="flex gap-2">
@@ -1251,7 +1254,7 @@ export default function AdminMemberDetail({
                     <div className="mt-1 space-y-1">
                       {removedSpouses.map((sp) => (
                         <div key={sp.spouse_id} className="flex items-center justify-between rounded-[var(--r-sm)] border border-dashed border-[var(--muted)]/30 bg-[var(--cream)] p-2.5 opacity-70">
-                          <p className="text-xs text-[var(--muted)]">{bi(sp.full_name, sp.full_name_en, lang)}</p>
+                          <p className="text-xs text-[var(--muted)]">{spouseDisplayName(sp, lang)}</p>
                           <button onClick={() => handleRestoreSpouse(sp.spouse_id)} disabled={actionLoading} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)] disabled:opacity-50">{t("adm_restore", lang)}</button>
                         </div>
                       ))}
@@ -1979,7 +1982,7 @@ function TreeChildNode({
   onNavigate: (id: string) => void;
   lang: Lang;
 }) {
-  const name = bi(node.full_name, node.full_name_en, lang);
+  const name = memberDisplayName(node, lang);
   return (
     <div>
       <div className="flex items-center gap-2 rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] px-3 py-2">
