@@ -3,8 +3,9 @@
 import { useState, useCallback } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLang } from "@/lib/language-context";
-import { t } from "@/lib/translations";
+import { t, type TranslationKey } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
+import { changedFieldLabels, extractChangedFields } from "@/lib/field-labels";
 
 interface ActivityRow {
   id: string;
@@ -35,9 +36,14 @@ const ACTION_ICONS: Record<string, string> = {
     "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z",
   admin_set_invite_code:
     "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z",
+  admin_set_edit_blocked:
+    "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z",
 };
 
-const VERB_MAP: Record<string, string> = {
+/** Longest field list shown inline before collapsing into "+N more". */
+const MAX_FIELD_LABELS = 4;
+
+const VERB_MAP: Record<string, TranslationKey> = {
   signup: "adm_verb_signup",
   login: "adm_verb_login",
   edit: "adm_verb_edit",
@@ -49,6 +55,20 @@ const VERB_MAP: Record<string, string> = {
 };
 
 type FilterKey = "all" | "login" | "signup" | "edit" | "admin";
+
+/**
+ * admin_set_edit_blocked rows carry `{ blocked: true|false }` rather than a
+ * field list, so the verb itself has to say what happened.
+ */
+function verbKeyFor(row: ActivityRow): TranslationKey {
+  if (row.action === "admin_set_edit_blocked") {
+    const blocked = row.details?.blocked;
+    if (blocked === true) return "adm_verb_admin_block";
+    if (blocked === false) return "adm_verb_admin_unblock";
+    return "adm_verb_admin_edit_perm";
+  }
+  return VERB_MAP[row.action] || "adm_verb_edit";
+}
 
 function relativeTime(iso: string, lang: string): string {
   const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -169,13 +189,20 @@ export default function AdminActivityFeed({
           {rows.map((row) => {
             const iconPath =
               ACTION_ICONS[row.action] || ACTION_ICONS["edit"];
-            const verbKey =
-              VERB_MAP[row.action] || "adm_verb_edit";
+            const verbKey = verbKeyFor(row);
             const targetName = bi(
               row.target_name,
               row.target_name_en,
               lang
             );
+
+            // What changed — present only on rows recorded with field data.
+            // Lower-cased in English because these read mid-sentence here,
+            // unlike the title-cased list in the member History panel.
+            const fieldLabels = changedFieldLabels(extractChangedFields(row.details), lang)
+              .map((label) => (lang === "en" ? label.toLowerCase() : label));
+            const shownLabels = fieldLabels.slice(0, MAX_FIELD_LABELS);
+            const extraCount = fieldLabels.length - shownLabels.length;
 
             return (
               <div
@@ -205,12 +232,12 @@ export default function AdminActivityFeed({
 
                 {/* Content */}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-[var(--maroon-deep)]">
+                  <p className="text-sm break-words text-[var(--maroon-deep)]">
                     <span className="font-medium">
                       {row.actor || (lang === "en" ? "System" : "सिस्टम")}
                     </span>{" "}
                     <span className="text-[var(--muted)]">
-                      {t(verbKey as keyof typeof import("@/lib/translations").default, lang)}
+                      {t(verbKey, lang)}
                     </span>
                     {targetName && (
                       <>
@@ -221,6 +248,16 @@ export default function AdminActivityFeed({
                             ({row.target_id})
                           </span>
                         )}
+                      </>
+                    )}
+                    {shownLabels.length > 0 && (
+                      <>
+                        <span className="text-[var(--muted)]"> — </span>
+                        <span className="font-medium text-[var(--gold-deep)]">
+                          {shownLabels.join(", ")}
+                          {extraCount > 0 &&
+                            `, ${t("adm_feed_more", lang).replace("{n}", String(extraCount))}`}
+                        </span>
                       </>
                     )}
                   </p>

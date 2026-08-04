@@ -441,8 +441,14 @@ export default function RegisterPage() {
           // editors do when only the English box was filled in.
           let gotraHi = regGotra;
           if (regGotraEn && !gotraHi) {
-            const hindi = await transliteratePhrase(regGotraEn);
-            if (hindi) gotraHi = hindi;
+            // Guarded like the name field: a transliteration failure must not
+            // skip the rest of the optional payload (gender/dob/mobile).
+            try {
+              const hindi = await transliteratePhrase(regGotraEn);
+              if (hindi) gotraHi = hindi;
+            } catch (err) {
+              console.error("gotra transliteration failed, keeping English only:", err);
+            }
           }
           if (gotraHi) optPayload.gotra = gotraHi;
           if (regGotraEn) optPayload.gotra_en = regGotraEn;

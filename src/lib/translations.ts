@@ -327,6 +327,20 @@ const translations = {
   adm_verb_admin_unlink: { en: "unlinked claim", hi: "ने दावा हटाया" },
   adm_verb_admin_delete_auth: { en: "deleted login account", hi: "ने लॉगिन खाता हटाया" },
   adm_verb_admin_set_invite: { en: "changed invite code", hi: "ने आमंत्रण कोड बदला" },
+  adm_verb_admin_block: { en: "blocked editing for", hi: "ने संपादन बंद किया" },
+  adm_verb_admin_unblock: { en: "unblocked editing for", hi: "ने संपादन चालू किया" },
+  adm_verb_admin_edit_perm: { en: "changed editing permission for", hi: "ने संपादन अनुमति बदली" },
+  adm_feed_more: { en: "+{n} more", hi: "+{n} और" },
+
+  // Changed-field labels used by the activity feed (columns with no existing label)
+  fld_photo: { en: "profile picture", hi: "प्रोफ़ाइल चित्र" },
+  fld_origin: { en: "origin", hi: "मूल" },
+  fld_state: { en: "state", hi: "राज्य" },
+  fld_country: { en: "country", hi: "देश" },
+  fld_living_status: { en: "living status", hi: "जीवन स्थिति" },
+  fld_father_link: { en: "father link", hi: "पिता कड़ी" },
+  fld_daughter_link: { en: "directory link", hi: "निर्देशिका कड़ी" },
+  fld_edit_permission: { en: "editing permission", hi: "संपादन अनुमति" },
 
   // Settings tab
   adm_invite_code: { en: "Invite Code", hi: "आमंत्रण कोड" },

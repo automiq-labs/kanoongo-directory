@@ -8,6 +8,8 @@ import type { SpouseRelative, MarriedDaughter } from "@/lib/types";
 import { bi } from "@/lib/bilingual";
 import { transliteratePhrase, useAutoHindi, sweepAutoHindi } from "@/lib/transliterate";
 import { removeSpouseRelatives } from "@/lib/spouse-cascade";
+import { logEditHistory } from "@/lib/edit-history";
+import { changedFieldLabels } from "@/lib/field-labels";
 import { RELATION_OPTIONS } from "@/lib/form-options";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -506,6 +508,18 @@ export default function AdminMemberDetail({
   const [detail, setDetail] = useState<MemberDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  /* Acting admin's auth id — edit_history.changed_by must equal auth.uid(). */
+  const [actorId, setActorId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadActor() {
+      const { data } = await supabase.auth.getUser();
+      if (!cancelled) setActorId(data.user?.id ?? null);
+    }
+    loadActor();
+    return () => { cancelled = true; };
+  }, [supabase]);
 
   /* ── Member edit ──────────────────────────────────────────────── */
   const [editValues, setEditValues] = useState<Record<string, unknown>>({});
@@ -1226,7 +1240,7 @@ export default function AdminMemberDetail({
                       </div>
                     )}
                     {/* Admin relatives — editable */}
-                    <AdminRelativesBlock spouseId={sp.spouse_id} relatives={sp.relatives || []} supabase={supabase} lang={lang} onRefresh={() => fetchDetail(currentId)} />
+                    <AdminRelativesBlock spouseId={sp.spouse_id} relatives={sp.relatives || []} supabase={supabase} lang={lang} familyId={detail?.family?.id ?? null} actorId={actorId} onRefresh={() => fetchDetail(currentId)} />
                   </div>
                 ))}
 
@@ -1407,7 +1421,7 @@ export default function AdminMemberDetail({
               </div>
 
               {/* ══════ SECTION C2: MARRIED DAUGHTERS (owned) — editable ═ */}
-              <AdminMDBlock memberId={currentId} daughters={detail.married_daughters || []} supabase={supabase} lang={lang} onRefresh={() => fetchDetail(currentId)} />
+              <AdminMDBlock memberId={currentId} daughters={detail.married_daughters || []} supabase={supabase} lang={lang} familyId={detail?.family?.id ?? null} actorId={actorId} onRefresh={() => fetchDetail(currentId)} />
 
               {/* ══════ SECTION C3: SASURAL (linked — daughter view) ══ */}
               {detail.sasural_details && detail.sasural_details.length > 0 && (
@@ -1493,12 +1507,21 @@ export default function AdminMemberDetail({
                   <p className="text-sm text-[var(--muted)]">{t("adm_no_history", lang)}</p>
                 ) : (
                   <div className="space-y-2">
-                    {detail.history.map((h, i) => (
-                      <div key={`h-${i}`} className="rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5">
-                        <p className="text-xs text-[var(--muted)]">{relativeTime(h.changed_at, lang)}{h.changed_by && <> &middot; {h.changed_by}</>}</p>
-                        {h.previous_values && <p className="mt-1 text-xs text-[var(--maroon-deep)]">{t("adm_changed_fields", lang)}: {Object.keys(h.previous_values).join(", ")}</p>}
-                      </div>
-                    ))}
+                    {detail.history.map((h, i) => {
+                      // Prefer the recorded change list; older rows only carry a
+                      // full snapshot, so fall back to its (non-metadata) keys.
+                      const recorded = h.previous_values?._fields;
+                      const cols = Array.isArray(recorded)
+                        ? (recorded as string[])
+                        : Object.keys(h.previous_values ?? {});
+                      const labels = changedFieldLabels(cols, lang);
+                      return (
+                        <div key={`h-${i}`} className="rounded-[var(--r-sm)] border border-[#EFE4CD] bg-[var(--cream)] p-2.5">
+                          <p className="text-xs text-[var(--muted)]">{relativeTime(h.changed_at, lang)}{h.changed_by && <> &middot; {h.changed_by}</>}</p>
+                          {labels.length > 0 && <p className="mt-1 text-xs text-[var(--maroon-deep)]">{t("adm_changed_fields", lang)}: {labels.join(", ")}</p>}
+                        </div>
+                      );
+                    })}
                     {detail.admin_actions.length > 0 && (
                       <>
                         <p className="mt-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--gold-deep)]">{t("adm_admin_actions", lang)}</p>
@@ -1598,8 +1621,9 @@ export default function AdminMemberDetail({
    Admin Relatives Block — human-labelled, auto-Hindi, relation dropdown
    ═══════════════════════════════════════════════════════════════════════ */
 
-function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }: {
-  spouseId: string; relatives: SpouseRelative[]; supabase: SupabaseClient; lang: Lang; onRefresh: () => void;
+function AdminRelativesBlock({ spouseId, relatives, supabase, lang, familyId, actorId, onRefresh }: {
+  spouseId: string; relatives: SpouseRelative[]; supabase: SupabaseClient; lang: Lang;
+  familyId: string | null; actorId: string | null; onRefresh: () => void;
 }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [editVals, setEditVals] = useState<Record<string, string>>({});
@@ -1632,6 +1656,15 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
     setSaving(true);
     const { error } = await supabase.rpc("admin_update_spouse_relative", { p_relative_id: editId, p_fields: dirty });
     if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
+    // Unlike admin_update_member/spouse/child, this RPC writes no history.
+    await logEditHistory(supabase, {
+      table: "spouse_relatives",
+      recordId: editId,
+      familyId,
+      userId: actorId,
+      previous: editOrig,
+      fields: Object.keys(dirty),
+    });
     setEditId(null); setSaving(false); onRefresh();
   }
 
@@ -1749,8 +1782,9 @@ function AdminRelativesBlock({ spouseId, relatives, supabase, lang, onRefresh }:
    Admin MD Block (married daughters — edit/add/remove)
    ═══════════════════════════════════════════════════════════════════════ */
 
-function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
-  memberId: string; daughters: MarriedDaughter[]; supabase: SupabaseClient; lang: Lang; onRefresh: () => void;
+function AdminMDBlock({ memberId, daughters, supabase, lang, familyId, actorId, onRefresh }: {
+  memberId: string; daughters: MarriedDaughter[]; supabase: SupabaseClient; lang: Lang;
+  familyId: string | null; actorId: string | null; onRefresh: () => void;
 }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [editVals, setEditVals] = useState<Record<string, string>>({});
@@ -1796,6 +1830,15 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, onRefresh }: {
     setSaving(true);
     const { error } = await supabase.rpc("admin_update_married_daughter", { p_md_id: editId, p_fields: dirty });
     if (error) { setErrMsg(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
+    // Unlike admin_update_member/spouse/child, this RPC writes no history.
+    await logEditHistory(supabase, {
+      table: "married_daughters",
+      recordId: editId,
+      familyId,
+      userId: actorId,
+      previous: editOrig,
+      fields: Object.keys(dirty),
+    });
     setEditId(null); setSaving(false); onRefresh();
   }
 

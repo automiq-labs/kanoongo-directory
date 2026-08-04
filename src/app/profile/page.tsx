@@ -10,11 +10,13 @@ import { Crest } from "@/components/Crest";
 import { FooterCredits } from "@/components/FooterCredits";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import { resolveMyMember } from "@/lib/resolve-my-member";
+import { logEditHistory } from "@/lib/edit-history";
 import BottomNav from "@/app/bottom-nav";
 import InitialsAvatar from "@/components/form/InitialsAvatar";
 
 interface UserProfile {
   email: string;
+  userId: string;
   memberId: string | null;
   memberName: string | null;
   memberNameEn: string | null;
@@ -56,6 +58,7 @@ export default function ProfilePage() {
       if (!cancelled) {
         setProfile({
           email: user.email || "",
+          userId: user.id,
           memberId: headMemberId,
           memberName: memberData?.full_name || null,
           memberNameEn: memberData?.full_name_en || null,
@@ -90,6 +93,15 @@ export default function ProfilePage() {
         setPhotoError(t("photo_upload_failed", lang));
         setTimeout(() => setPhotoError(null), 4000);
       } else {
+        // This path updates members directly, so it must record its own history.
+        await logEditHistory(supabase, {
+          table: "members",
+          recordId: profile.memberId,
+          familyId: profile.familyId,
+          userId: profile.userId,
+          previous: { photo_url: profile.photoUrl },
+          fields: ["photo_url"],
+        });
         setProfile((p) => p ? { ...p, photoUrl: url } : p);
       }
       setPhotoPreview(null);

@@ -10,6 +10,7 @@ import { bi } from "@/lib/bilingual";
 import { createClient } from "@/lib/supabase/client";
 import { useAutoHindi, sweepAutoHindi, transliteratePhrase } from "@/lib/transliterate";
 import { removeSpouseRelatives } from "@/lib/spouse-cascade";
+import { logEditHistory } from "@/lib/edit-history";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
@@ -489,11 +490,15 @@ function SpouseRelativesEditor({
   spouseId,
   relatives,
   lang,
+  familyId,
+  userId,
   onRefresh,
 }: {
   spouseId: string;
   relatives: SpouseRelative[];
   lang: Lang;
+  familyId: string | null;
+  userId: string | null;
   onRefresh: () => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -579,7 +584,19 @@ function SpouseRelativesEditor({
     if (cityHi) dirty.city = cityHi;
     if (addrHi) dirty.addr = addrHi;
     const { error } = await supabase.rpc("update_spouse_relative", { p_relative_id: editingId, p_fields: dirty });
-    if (error) console.error("update_spouse_relative error:", error);
+    if (error) {
+      console.error("update_spouse_relative error:", error);
+    } else {
+      // The RPC writes no history of its own — record it here (S9 pattern).
+      await logEditHistory(supabase, {
+        table: "spouse_relatives",
+        recordId: editingId,
+        familyId,
+        userId,
+        previous: (original ?? {}) as unknown as Record<string, unknown>,
+        fields: Object.keys(dirty),
+      });
+    }
     setEditingId(null);
     setEditSaving(false);
     onRefresh();
@@ -705,9 +722,10 @@ function CollapsibleNote({ text, label }: { text: string; label: string }) {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function SasuralEditor({
-  member, details, lang, onRefresh,
+  member, details, lang, familyId, userId, onRefresh,
 }: {
-  member: Member; details: MarriedDaughter[]; lang: Lang; onRefresh: () => void;
+  member: Member; details: MarriedDaughter[]; lang: Lang;
+  familyId: string | null; userId: string | null; onRefresh: () => void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [addVals, setAddVals] = useState<Record<string, string>>({});
@@ -791,6 +809,15 @@ function SasuralEditor({
     const supabase = createClient();
     const { error } = await supabase.rpc("update_married_daughter", { p_md_id: editingId, p_fields: fields });
     if (error) { setEditErr(error.message); setEditSaving(false); return; }
+    // The RPC writes no history of its own — record it here (S9 pattern).
+    await logEditHistory(supabase, {
+      table: "married_daughters",
+      recordId: editingId,
+      familyId,
+      userId,
+      previous: (original ?? {}) as unknown as Record<string, unknown>,
+      fields: Object.keys(fields),
+    });
     setEditingId(null); setEditSaving(false); onRefresh();
   }
 
@@ -1400,14 +1427,14 @@ export default function FamilyCardClient({
           .select("member_id");
         if (error) throw error;
         if (!mUpd || mUpd.length === 0) throw new Error("edit_blocked");
-        const { error: histErr } = await supabase.from("edit_history").insert({
-          table_name: "members",
-          record_id: m.member_id,
-          family_id: familyId,
-          changed_by: userId,
-          previous_values: m,
+        await logEditHistory(supabase, {
+          table: "members",
+          recordId: m.member_id,
+          familyId,
+          userId,
+          previous: m as unknown as Record<string, unknown>,
+          fields: Object.keys(memberPayload),
         });
-        if (histErr) console.warn("edit_history (members) insert failed:", histErr.message);
       }
 
       // --- Spouses ---
@@ -1432,14 +1459,14 @@ export default function FamilyCardClient({
             .select("spouse_id");
           if (error) throw error;
           if (!sUpd || sUpd.length === 0) throw new Error("edit_blocked");
-          const { error: histErr2 } = await supabase.from("edit_history").insert({
-            table_name: "spouses",
-            record_id: s.spouse_id,
-            family_id: familyId,
-            changed_by: userId,
-            previous_values: s,
+          await logEditHistory(supabase, {
+            table: "spouses",
+            recordId: s.spouse_id,
+            familyId,
+            userId,
+            previous: s as unknown as Record<string, unknown>,
+            fields: Object.keys(payload),
           });
-          if (histErr2) console.warn("edit_history (spouses) insert failed:", histErr2.message);
         }
       }
 
@@ -1465,14 +1492,14 @@ export default function FamilyCardClient({
             .select("child_id");
           if (error) throw error;
           if (!cUpd || cUpd.length === 0) throw new Error("edit_blocked");
-          const { error: histErr3 } = await supabase.from("edit_history").insert({
-            table_name: "children",
-            record_id: c.child_id,
-            family_id: familyId,
-            changed_by: userId,
-            previous_values: c,
+          await logEditHistory(supabase, {
+            table: "children",
+            recordId: c.child_id,
+            familyId,
+            userId,
+            previous: c as unknown as Record<string, unknown>,
+            fields: Object.keys(payload),
           });
-          if (histErr3) console.warn("edit_history (children) insert failed:", histErr3.message);
         }
       }
 
@@ -2016,7 +2043,7 @@ export default function FamilyCardClient({
                         </p>
                       </div>
                       {/* Spouse relatives — edit mode */}
-                      {canEditEffective && <SpouseRelativesEditor spouseId={s.spouse_id} relatives={s.relatives || []} lang={lang} onRefresh={() => router.refresh()} />}
+                      {canEditEffective && <SpouseRelativesEditor spouseId={s.spouse_id} relatives={s.relatives || []} lang={lang} familyId={userFamilyId} userId={userId} onRefresh={() => router.refresh()} />}
 
                       {/* Remove spouse */}
                       {canEditEffective && (
@@ -2547,7 +2574,7 @@ export default function FamilyCardClient({
               })}
               {/* Editor — only for female members with a father */}
               {canEditEffective && m.gender === "F" && m.father_member_id && (
-                <SasuralEditor member={m} details={sasuralDetails} lang={lang} onRefresh={() => router.refresh()} />
+                <SasuralEditor member={m} details={sasuralDetails} lang={lang} familyId={userFamilyId} userId={userId} onRefresh={() => router.refresh()} />
               )}
             </div>
             </FadeIn>

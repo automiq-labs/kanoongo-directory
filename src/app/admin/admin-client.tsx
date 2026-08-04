@@ -230,7 +230,13 @@ export default function AdminClient() {
     if (!authed) return;
     let cancelled = false;
     async function loadSortSeq() {
-      const { data, error } = await supabase.from("members").select("member_id, sort_seq");
+      // Explicit ceiling: PostgREST silently caps unbounded selects at 1000
+      // rows, which would quietly truncate book order once the directory grows
+      // past that. 220 members today — raise this (or page it) before 2000.
+      const { data, error } = await supabase
+        .from("members")
+        .select("member_id, sort_seq")
+        .limit(2000);
       if (cancelled || error || !data) return;
       const map: Record<string, number | null> = {};
       for (const row of data as { member_id: string; sort_seq: number | null }[]) {
