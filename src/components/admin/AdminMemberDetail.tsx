@@ -800,6 +800,11 @@ export default function AdminMemberDetail({
       p_child_id: promoteChildId,
       p_husband_name: isFemaleGender(child?.gender) ? (promoteHusbandName.trim() || null) : null,
       p_husband_name_en: isFemaleGender(child?.gender) ? (promoteHusbandNameEn.trim() || null) : null,
+      // "Promote to Member" here means exactly that — unlike the family card's
+      // "Mark as married", it says nothing about marriage, so a son keeps his
+      // existing marital status instead of being silently marked married.
+      // (The daughter branch is unaffected: a D-id is a married daughter.)
+      p_mark_married: false,
     });
     if (!err) { setPromoteChildId(null); setPromoteHusbandName(""); setPromoteHusbandNameEn(""); await fetchDetail(currentId); onRefresh(); }
     setPromoteSaving(false);

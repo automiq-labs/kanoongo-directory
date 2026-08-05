@@ -16,6 +16,7 @@ import GotraSelect from "@/components/form/GotraSelect";
 import DateField from "@/components/form/DateField";
 import PhoneField from "@/components/form/PhoneField";
 import { transliteratePhrase } from "@/lib/transliterate";
+import { memberDisplayName } from "@/lib/display-name";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,10 @@ interface ParentCandidate {
   city: string | null;
   city_en: string | null;
   match_score: number;
+  // Added by the S20 picker migration; absent until it is applied, which
+  // memberDisplayName treats as "not deceased" — so this degrades safely.
+  is_deceased?: boolean;
+  gender?: string | null;
 }
 
 interface SelfMatch {
@@ -46,6 +51,8 @@ interface SelfMatch {
   match_score: number;
   source: "member" | "child";
   match_id: string;
+  is_deceased?: boolean;
+  gender?: string | null;
 }
 
 interface SpouseMatch {
@@ -130,6 +137,9 @@ export default function RegisterPage() {
   // Step 3a cont — self match (birth path)
   const [selfMatches, setSelfMatches] = useState<SelfMatch[]>([]);
   const [claimMemberId, setClaimMemberId] = useState<string | null>(null);
+
+  // Probable-duplicate prompt raised by complete_registration's fuzzy guard
+  const [dupCandidate, setDupCandidate] = useState<{ id: string; name: string | null } | null>(null);
 
   // Step 3b — husband search (wife path)
   const [husbandQuery, setHusbandQuery] = useState("");
@@ -333,7 +343,7 @@ export default function RegisterPage() {
 
   // ── Step 4 — create account ───────────────────────────────────────────────
 
-  async function handleCreateAccount(e: React.FormEvent) {
+  function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
@@ -345,6 +355,22 @@ export default function RegisterPage() {
       setError(t("reg_password_mismatch", lang));
       return;
     }
+
+    return runRegistration({});
+  }
+
+  /**
+   * Everything after the password checks. Re-runnable: the account already
+   * exists on a retry, so the signed-in branch below picks it up. The two
+   * overrides come from the duplicate prompt — claim the candidate, or insist
+   * on being someone else (which bypasses the server's fuzzy guard only).
+   */
+  async function runRegistration(opts: { claimId?: string | null; forceNew?: boolean }) {
+    setError("");
+    setDupCandidate(null);
+
+    const effectiveClaimId = opts.claimId !== undefined ? opts.claimId : claimMemberId;
+    if (opts.claimId !== undefined) setClaimMemberId(opts.claimId);
 
     setCreating(true);
     try {
@@ -407,9 +433,10 @@ export default function RegisterPage() {
         p_name,
         p_name_en: p_name_en || null,
         p_parent_member_id: selectedParent?.member_id || selectedHusband?.member_id || null,
-        p_claim_member_id: claimMemberId || null,
+        p_claim_member_id: effectiveClaimId || null,
         p_claim_spouse_id: claimSpouseId || null,
         p_invite_code: code.trim(),
+        p_force_new: opts.forceNew === true,
       });
 
       if (rpcError) {
@@ -417,6 +444,25 @@ export default function RegisterPage() {
         if (rpcError.message.includes("invalid_invite_code")) {
           setError(t("reg_code_wrong", lang));
           setStep("code");
+        } else if (rpcError.message.includes("name_probably_matches_existing_")) {
+          // Soft guard (S20): a near-match, not a certain one. Offer the
+          // candidate as a claim rather than a dead end.
+          const match = /name_probably_matches_existing_(child|member):(\S+)/.exec(rpcError.message);
+          if (match) {
+            const kind = match[1] as "child" | "member";
+            const candidateId = match[2];
+            const { data: cand } = await supabase
+              .from(kind === "child" ? "children" : "members")
+              .select("full_name, full_name_en")
+              .eq(kind === "child" ? "child_id" : "member_id", candidateId)
+              .maybeSingle();
+            setDupCandidate({
+              id: candidateId,
+              name: cand ? bi(cand.full_name, cand.full_name_en, lang) : candidateId,
+            });
+          } else {
+            setError(t("reg_signup_error", lang));
+          }
         } else if (rpcError.message.includes("name_matches_existing_child") || rpcError.message.includes("name_matches_existing_member")) {
           setError(t("reg_name_matches_existing", lang));
           // Send back to the claim-selection step so they can pick themselves
@@ -433,7 +479,7 @@ export default function RegisterPage() {
       }
 
       // Set optional fields on the newly created member (new-member path only, not claims)
-      if (!claimMemberId && !claimSpouseId) {
+      if (!effectiveClaimId && !claimSpouseId) {
         try {
           const optPayload: Record<string, string> = {};
           if (gender) optPayload.gender = gender;
@@ -727,12 +773,13 @@ export default function RegisterPage() {
                   )}
                   {parentResults.map((p) => {
                     const pName = bi(p.full_name, p.full_name_en, lang);
+                    const pDisplay = memberDisplayName(p, lang);
                     const pCity = bi(p.city, p.city_en, lang);
                     return (
                       <button key={p.member_id} onClick={() => handleParentSelect(p)} className={resultCardClass}>
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-base font-bold text-[var(--maroon)]">{pName?.charAt(0) || "?"}</div>
                         <div className="min-w-0">
-                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{pName}</p>
+                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{pDisplay}</p>
                           {pCity && <p className="text-[13px] text-[var(--muted)]">{pCity}</p>}
                         </div>
                       </button>
@@ -753,6 +800,7 @@ export default function RegisterPage() {
                 <div className="space-y-2">
                   {selfMatches.map((m) => {
                     const mName = bi(m.full_name, m.full_name_en, lang);
+                    const mDisplay = memberDisplayName(m, lang);
                     const mCity = bi(m.city, m.city_en, lang);
 
                     if (m.already_claimed) {
@@ -761,7 +809,7 @@ export default function RegisterPage() {
                           <div className="flex items-center gap-3">
                             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-lg font-bold text-[var(--maroon)]">{mName?.charAt(0) || "?"}</div>
                             <div className="min-w-0 flex-1">
-                              <p className="font-display font-semibold text-[var(--maroon-deep)]">{mName}</p>
+                              <p className="font-display font-semibold text-[var(--maroon-deep)]">{mDisplay}</p>
                               {mCity && <p className="text-[13px] text-[var(--muted)]">{mCity}</p>}
                             </div>
                           </div>
@@ -781,7 +829,7 @@ export default function RegisterPage() {
                       <button key={m.match_id} onClick={() => handleClaimSelf(m.match_id)} className={resultCardClass}>
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-lg font-bold text-[var(--maroon)]">{mName?.charAt(0) || "?"}</div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{mName}</p>
+                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{mDisplay}</p>
                           {mCity && <p className="text-[13px] text-[var(--muted)]">{mCity}</p>}
                         </div>
                         <span className="shrink-0 text-xs font-medium text-[var(--gold-deep)]">{t("reg_yes_thats_me", lang)} →</span>
@@ -815,12 +863,13 @@ export default function RegisterPage() {
                   )}
                   {husbandResults.map((h) => {
                     const hName = bi(h.full_name, h.full_name_en, lang);
+                    const hDisplay = memberDisplayName(h, lang);
                     const hCity = bi(h.city, h.city_en, lang);
                     return (
                       <button key={h.member_id} onClick={() => handleHusbandSelect(h)} className={resultCardClass}>
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-base font-bold text-[var(--maroon)]">{hName?.charAt(0) || "?"}</div>
                         <div className="min-w-0">
-                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{hName}</p>
+                          <p className="font-display font-semibold text-[var(--maroon-deep)]">{hDisplay}</p>
                           {hCity && <p className="text-[13px] text-[var(--muted)]">{hCity}</p>}
                         </div>
                       </button>
@@ -881,8 +930,48 @@ export default function RegisterPage() {
               </div>
             )}
 
+            {/* ── PROBABLE DUPLICATE (fuzzy guard) ───────────────────── */}
+            {step === "account" && !emailConfirmNeeded && dupCandidate && (
+              <div className={cardClass}>
+                <h2 className="mb-1 text-lg font-semibold text-[var(--maroon-deep)]">
+                  {t("reg_dup_title", lang)}
+                </h2>
+                <p className="mb-4 text-sm text-[var(--muted)]">{t("reg_dup_hint", lang)}</p>
+
+                <div className="flex items-center gap-3 rounded-[var(--r-lg)] border border-[var(--gold)] bg-[rgba(201,150,46,0.08)] p-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[1.5px] border-[var(--gold)] bg-[var(--cream-panel)] font-display text-lg font-bold text-[var(--maroon)]">
+                    {dupCandidate.name?.charAt(0) || "?"}
+                  </div>
+                  <p className="min-w-0 flex-1 font-display font-semibold text-[var(--maroon-deep)]">
+                    {dupCandidate.name}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => runRegistration({ claimId: dupCandidate.id })}
+                  disabled={creating}
+                  className={`mt-4 ${primaryBtn}`}
+                >
+                  {creating ? t("reg_creating", lang) : t("reg_yes_thats_me", lang)}
+                </button>
+                <button
+                  onClick={() => runRegistration({ forceNew: true })}
+                  disabled={creating}
+                  className={`mt-3 ${secondaryBtn}`}
+                >
+                  {t("reg_dup_not_me", lang)}
+                </button>
+
+                {error && (
+                  <div className="mt-3 rounded-[var(--r-sm)] px-4 py-3 text-sm font-medium text-[var(--maroon-deep)]" style={{ background: "rgba(110,30,42,0.06)" }}>
+                    {error}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ── STEP: ACCOUNT ──────────────────────────────────────── */}
-            {step === "account" && !emailConfirmNeeded && (
+            {step === "account" && !emailConfirmNeeded && !dupCandidate && (
               <form onSubmit={handleCreateAccount} className={cardClass}>
                 <h2 className="mb-5 text-lg font-semibold text-[var(--maroon-deep)]">
                   {t("reg_step_account_title", lang)}

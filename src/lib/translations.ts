@@ -477,6 +477,9 @@ const translations = {
 
   // Dedup guard errors
   reg_name_matches_existing: { en: "You already appear in this family's records. Please go back and select yourself from the list instead of creating a new entry.", hi: "आप इस परिवार के रिकॉर्ड में पहले से मौजूद हैं। कृपया वापस जाकर सूची में से स्वयं को चुनें।" },
+  reg_dup_title: { en: "Did you mean…?", hi: "क्या आपका मतलब…?" },
+  reg_dup_hint: { en: "Someone with a similar name is already listed in this family. If that record is you, claim it instead of creating a second one. If it's a relative, just carry on.", hi: "इस परिवार में मिलते-जुलते नाम वाला रिकॉर्ड पहले से मौजूद है। अगर वह आप हैं, तो नया बनाने के बजाय उसी को अपनाएं। अगर वह आपके कोई रिश्तेदार हैं, तो आगे बढ़ें।" },
+  reg_dup_not_me: { en: "No, I'm someone else — continue", hi: "नहीं, मैं कोई और हूँ — आगे बढ़ें" },
   err_child_already_member: { en: "This person is already a registered member of this family.", hi: "यह व्यक्ति पहले से इस परिवार के पंजीकृत सदस्य हैं।" },
   err_duplicate_entry: { en: "This person is already listed here.", hi: "यह व्यक्ति पहले से यहाँ सूचीबद्ध हैं।" },
 
