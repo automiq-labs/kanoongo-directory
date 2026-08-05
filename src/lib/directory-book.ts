@@ -251,21 +251,28 @@ function dobKey(dob: string | null): number {
   return +m[1] * 10000 + +m[2] * 100 + +m[3];
 }
 
+/** Natural order, so a D-id suffix sorts D0003_2 before D0003_10. */
+const REGISTER_ID_ORDER = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+
 /**
- * Sibling order: date of birth where present, then register id, then sort_seq.
+ * Sibling order is register-id order. Not date of birth — not even as a
+ * tiebreak.
  *
- * sort_seq is deliberately the LAST resort. It is a banded import artifact —
- * M-rows are 1000000000+n and N-rows are 3000000000+n — so ordering by it
- * would exile every future registrant to the back of the book. N0006, a
- * married son of M0095, sorts at 3000000006.
+ * The register numbering IS birth order: sons follow their father in sequence,
+ * which is the structural rule S18/S19 relied on to find six wrong father
+ * links. Only 80 of 216 rows carry a dob, so sorting by date reshuffles 11 of
+ * 27 sibling groups around whoever happens to have a date recorded. M0002's
+ * nine sons would print
+ *   M0003, M0005, M0008, M0016, M0013, M0018, M0021, M0022, M0010
+ * instead of M0003 … M0022 in order, with M0010 उमेश चन्द्र — the 4th son —
+ * landing last purely because his dob is null.
+ *
+ * sort_seq is not consulted either: it is a banded import artifact (M-rows
+ * 1000000000+n, N-rows 3000000000+n) that would exile every future registrant
+ * to the back of the book.
  */
 function compareSiblings(a: MemberRow, b: MemberRow): number {
-  const byDob = dobKey(a.dob) - dobKey(b.dob);
-  if (byDob !== 0 && Number.isFinite(byDob)) return byDob;
-  if (dobKey(a.dob) !== dobKey(b.dob)) return dobKey(a.dob) - dobKey(b.dob);
-  const byId = a.member_id.localeCompare(b.member_id);
-  if (byId !== 0) return byId;
-  return (a.sort_seq ?? Infinity) - (b.sort_seq ?? Infinity);
+  return REGISTER_ID_ORDER.compare(a.member_id, b.member_id);
 }
 
 export interface BookPage {
