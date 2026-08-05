@@ -509,6 +509,27 @@ const translations = {
   clear_all_filters: { en: "Clear all", hi: "सभी हटाएँ" },
   apply_filters: { en: "Apply", hi: "लागू करें" },
 
+  // Printed directory (PDF export)
+  adm_pdf_heading: { en: "Directory PDF", hi: "निर्देशिका पीडीएफ" },
+  adm_pdf_desc: { en: "Generates the whole directory as it stands right now, print-ready for A4. Nothing is saved — generate it again whenever families update their details.", hi: "पूरी निर्देशिका इस समय की स्थिति के अनुसार बनाता है, A4 पर छपाई के लिए तैयार। कुछ सहेजा नहीं जाता — परिवारों द्वारा विवरण अपडेट करने पर दोबारा बनाएं।" },
+  adm_pdf_hint: { en: "Opens a print view in a new tab. Choose \"Save as PDF\" as the destination, and turn OFF headers and footers.", hi: "नए टैब में प्रिंट दृश्य खुलेगा। गंतव्य में \"Save as PDF\" चुनें, और हेडर/फुटर बंद करें।" },
+  adm_pdf_hi: { en: "Download — हिन्दी", hi: "डाउनलोड — हिन्दी" },
+  adm_pdf_en: { en: "Download — English", hi: "डाउनलोड — English" },
+  book_title: { en: "Govindgarh (Jaipur) Kanoongo Family Directory", hi: "गोविन्दगढ़ (जयपुर) कानूनगो परिवार निदेशिका" },
+  book_photo_placeholder: { en: "LATEST PHOTO", hi: "लेटेस्ट फोटो" },
+  book_continued: { en: "(contd.)", hi: "(क्रमशः)" },
+  book_sec_personal: { en: "Personal Details", hi: "व्यक्तिगत विवरण" },
+  book_sec_wife: { en: "Wife's Details", hi: "पत्नि का विवरण" },
+  book_sec_children: { en: "Unmarried Children", hi: "अविवाहित बच्चों का विवरण" },
+  book_sec_sasural: { en: "In-laws (Sasural)", hi: "ससुराल की तरफ का विवरण" },
+  book_sec_daughters: { en: "Married Daughters", hi: "विवाहित पुत्रियों का विवरण" },
+  book_caste_gotra: { en: "Caste / Gotra", hi: "जाति / गोत्र" },
+  book_tree_heading: { en: "Family Tree", hi: "वंश वृक्ष" },
+  book_generation_label: { en: "Generation", hi: "पीढ़ी" },
+  book_contents: { en: "Contents", hi: "अनुक्रम" },
+  book_page_count: { en: "entries", hi: "प्रविष्टियाँ" },
+  book_generated_on: { en: "Generated on", hi: "निर्मित" },
+
   // Footer attribution + support
   footer_attribution: { en: "Kanoongo Family Directory — Convened & created by Shri Ramakant Kanoongo, D-12, Chikitsalaya Marg, Bapu Nagar, Jaipur (Rajasthan) 302015 · Mobile 9314501135 · Email rkklic@yahoo.com", hi: "कानूनगो परिवार निर्देशिका — संयोजक एवं निर्माता: श्री रमाकान्त कानूनगो, डी-12, चिकित्सालय मार्ग, बापू नगर, जयपुर (राजस्थान) 302015 · मोबाइल 9314501135 · ई-मेल rkklic@yahoo.com" },
   footer_support: { en: "For help or technical assistance: Ramakant Kanoongo — 9314501135 · Shreyansh Kanoongo (Automiq Labs) — 8108980010 · shreyansh@automiqlabs.com", hi: "सहायता या तकनीकी समस्या के लिए संपर्क करें: रमाकान्त कानूनगो — 9314501135 · श्रेयांश कानूनगो (Automiq Labs) — 8108980010 · shreyansh@automiqlabs.com" },

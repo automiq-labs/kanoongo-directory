@@ -1040,6 +1040,33 @@ export default function AdminClient() {
               )}
             </div>
 
+            {/* Directory PDF */}
+            <div className="mb-6 rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-5 shadow-card">
+              <h2 className="font-display text-base font-semibold text-[var(--maroon)] mb-1">
+                {t("adm_pdf_heading", lang)}
+              </h2>
+              <p className="text-xs text-[var(--muted)] mb-3">{t("adm_pdf_desc", lang)}</p>
+
+              <div className="flex flex-wrap gap-2">
+                {(["hi", "en"] as const).map((edition) => (
+                  <a
+                    key={edition}
+                    href={`/admin/print?lang=${edition}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-[44px] items-center gap-1.5 rounded-[var(--r)] bg-[var(--maroon)] px-4 text-[13px] font-medium text-[var(--ivory)] motion-safe:transition-colors motion-safe:duration-[var(--dur-fast)] hover:bg-[var(--maroon-deep)]"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    {t(edition === "hi" ? "adm_pdf_hi" : "adm_pdf_en", lang)}
+                  </a>
+                ))}
+              </div>
+
+              <p className="mt-3 text-[11px] leading-relaxed text-[var(--muted)]">{t("adm_pdf_hint", lang)}</p>
+            </div>
+
             {/* Notices */}
             <div className="rounded-[var(--r)] border border-[#EFE4CD] bg-[var(--raised)] p-5 shadow-card">
               <div className="mb-3 flex items-center justify-between">
