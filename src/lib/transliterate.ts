@@ -129,6 +129,59 @@ const HONORIFICS: Record<string, string> = {
   "ms.": "सुश्री",
 };
 
+/* ─── Block designators: single Latin letters (mapped directly, no API) ── */
+
+/**
+ * A standalone Latin letter is a block/wing designator, and the register spells
+ * these out. 87 of the 448 stored Hindi address values — 19% — open with one,
+ * and the transliteration API renders several of them as characters that cannot
+ * stand alone: "A" came back as "ा" and "E" as "इ", so "A-38, Krishna Nagar"
+ * became "ा-38, ..." — a bare dependent vowel sign where the book prints "ए".
+ *
+ * The first eleven entries are the register's own spellings, taken from the 89
+ * occurrences across the stored data (counts in the comments). Note E → ई, not
+ * इ: the book uses the long vowel. The remaining fifteen follow the same
+ * pattern — the English letter name written in Devanagari.
+ *
+ * This is keyed on the lowercase letter and applies to ANY standalone
+ * single-letter token, not just a leading one: the register also uses a
+ * designator as a suffix, as in "बी -194-ए,युनिवेर्सिटी मार्ग".
+ *
+ * Safe for names: no name in the directory uses initials (0 of 216
+ * members.full_name_en, 0 of 182 spouse_relatives.full_name_en), so the table
+ * cannot damage one today — and were initials to appear, Devanagari is the
+ * right rendering in a Hindi edition regardless.
+ */
+const SINGLE_LETTERS: Record<string, string> = {
+  a: "ए",       // 17 — ए-160,नेहरु नगर
+  b: "बी",      // 21 — बी -194-ए,युनिवेर्सिटी मार्ग
+  c: "सी",      // 10 — सी -1/302,कमल अप्पाटमेंट
+  d: "डी",      // 14 — डी-12,चिकित्सालय मार्ग
+  e: "ई",       // 12 — ई -319,वैशाली नगर
+  f: "एफ",      //  5
+  g: "जी",      //  3
+  h: "एच",      //  2
+  n: "एन",      //  2
+  o: "ओ",       //  2
+  t: "टी",      //  1
+  // Not attested in the stored data; same pattern.
+  i: "आई",
+  j: "जे",
+  k: "के",
+  l: "एल",
+  m: "एम",
+  p: "पी",
+  q: "क्यू",
+  r: "आर",
+  s: "एस",
+  u: "यू",
+  v: "वी",
+  w: "डब्ल्यू",
+  x: "एक्स",
+  y: "वाई",
+  z: "ज़ेड",
+};
+
 /* ─── Devanagari detection ───────────────────────────────────────────── */
 
 const DEVANAGARI_RE = /[\u0900-\u097F]/;
@@ -148,6 +201,10 @@ export async function transliterateWord(word: string): Promise<string | null> {
 
   // Honorific
   if (HONORIFICS[key]) return HONORIFICS[key];
+
+  // Block designator — ahead of the cache, so a stale API answer from earlier
+  // in the session ("a" → "ा") can never shadow the register's spelling.
+  if (SINGLE_LETTERS[key]) return SINGLE_LETTERS[key];
 
   // Cache hit
   if (cache.has(key)) return cache.get(key) ?? null;
