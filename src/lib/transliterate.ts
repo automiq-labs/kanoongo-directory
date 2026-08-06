@@ -186,11 +186,27 @@ export async function transliterateWord(word: string): Promise<string | null> {
 /* ─── Phrase transliteration ─────────────────────────────────────────── */
 
 /**
- * A word is a run starting with an alphanumeric and continuing through
+ * A candidate token is a run starting with an alphanumeric and continuing through
  * alphanumerics and dots — so the dictionary's abbreviations ("b.a.", "m.b.b.s.")
  * survive tokenisation. Everything else is a separator.
  */
-const WORD_RE = /[A-Za-z0-9][A-Za-z0-9.]*/g;
+const TOKEN_RE = /[A-Za-z0-9][A-Za-z0-9.]*/g;
+
+/**
+ * ...but a token has to contain a Latin letter to count as a *word*. A run of
+ * digits is not English awaiting transliteration; it is a number, and the
+ * register writes numbers in Latin digits inside Devanagari text. 271 of the 448
+ * stored address values do exactly that, against 5 in Devanagari
+ * ("ए-38,कृष्णा नगर-2"), and S21 already ruled that Latin digits stay in the
+ * printed book. Without this test "90/1" transliterated to "९०/१".
+ *
+ * Digit-only runs are simply not consumed by the tokeniser, so they stay in the
+ * surrounding separator run and pass through verbatim.
+ *
+ * No `g` flag — this is a predicate, and a sticky lastIndex would make it
+ * answer differently on identical input.
+ */
+const LATIN_LETTER_RE = /[A-Za-z]/;
 
 export async function transliteratePhrase(phrase: string): Promise<string | null> {
   const trimmed = phrase.trim();
@@ -220,15 +236,20 @@ export async function transliteratePhrase(phrase: string): Promise<string | null
   const words: string[] = [];
   const separators: string[] = [];
   let cursor = 0;
-  WORD_RE.lastIndex = 0;
-  for (let m = WORD_RE.exec(trimmed); m; m = WORD_RE.exec(trimmed)) {
+  TOKEN_RE.lastIndex = 0;
+  for (let m = TOKEN_RE.exec(trimmed); m; m = TOKEN_RE.exec(trimmed)) {
+    // Digits and dots only — leave the token where it is. `cursor` does not move,
+    // so the run is absorbed into the next separator slice (or into `tail`) and
+    // is emitted unchanged.
+    if (!LATIN_LETTER_RE.test(m[0])) continue;
     separators.push(trimmed.slice(cursor, m.index));
     words.push(m[0]);
     cursor = m.index + m[0].length;
   }
   const tail = trimmed.slice(cursor);
 
-  // Nothing to transliterate (e.g. already Devanagari) — hand it back as-is.
+  // Nothing to transliterate — already Devanagari, or a pure number like "90/1".
+  // Hand it back as-is.
   if (words.length === 0) return trimmed;
 
   const results = await Promise.all(words.map((w) => transliterateWord(w)));
@@ -296,8 +317,9 @@ export function useAutoHindi(
     if (!enTrimmed) return;
 
     // Hindi is non-empty, was NOT auto-filled (user typed it), and is actually
-    // Hindi → don't touch. Residue with no Devanagari in it is not user-authored
-    // Hindi however it got there, so it stays eligible for refill (S22).
+    // Hindi → don't touch. Latin residue with no Devanagari beside it is not
+    // user-authored Hindi however it got there, so it stays eligible for refill
+    // (S22). Digits alone are not residue — see isNotHindi.
     if (hiTrimmed && hiTrimmed !== lastAutoRef.current && !isNotHindi(hiTrimmed)) return;
 
     // Hindi is empty OR still matches the last auto-fill → (re)fill after debounce
@@ -334,26 +356,38 @@ export function useAutoHindi(
 /* ─── Pre-save sweep ─────────────────────────────────────────────────── */
 
 /**
- * True when a Hindi column holds something that cannot be Hindi: no Devanagari
- * anywhere in it. Latin text, a bare digit and punctuation all qualify.
+ * True when a Hindi column holds something that cannot be Hindi: a Latin letter,
+ * and no Devanagari anywhere to go with it.
  *
  * This is the check that catches the S22 corruption class. Until S22 the sweep
- * only filled *empty* Hindi fields, so a Hindi column left holding "D" (or "9",
- * which passes every Latin-character audit) survived every subsequent save —
- * both this sweep and useAutoHindi treat a non-empty value as user-authored and
- * refuse to touch it. Anything with no Devanagari in it was never user-authored
- * Hindi, so it is safe to re-derive from the English side.
+ * only filled *empty* Hindi fields, so a Hindi column left holding "D" survived
+ * every subsequent save — both this sweep and useAutoHindi treat a non-empty
+ * value as user-authored and refuse to touch it. Latin with no Devanagari beside
+ * it was never user-authored Hindi, so it is safe to re-derive from English.
+ *
+ * A value with no Latin letter in it is NOT evidence of corruption, even with no
+ * Devanagari: "90/1" is a house number, and a house number is written in Latin
+ * digits in the Hindi column by the register's own convention (see
+ * LATIN_LETTER_RE above). Two consequences of getting this wrong, both real:
+ * a legitimate digit-only address would be clobbered by whatever the English
+ * column holds, and — since transliteratePhrase now returns digit-only input
+ * unchanged — the sweep could never converge on it, re-deriving the same value
+ * on every save forever.
+ *
+ * The cost is that a digit-only value that IS residue can no longer be
+ * distinguished from a genuine house number, so it is left alone. That is the
+ * right way round: it repairs on the next real edit to the field.
  */
 function isNotHindi(value: string): boolean {
-  return value.trim() !== "" && !DEVANAGARI_RE.test(value);
+  return LATIN_LETTER_RE.test(value) && !DEVANAGARI_RE.test(value);
 }
 
 /**
  * Fill Hindi fields before save. Non-blocking: if the API fails the pair is
  * skipped and the existing value is left alone. Returns updated edits.
  *
- * A Hindi field is (re)filled when it is empty OR when it holds no Devanagari
- * at all while the English side has content — see isNotHindi above.
+ * A Hindi field is (re)filled when it is empty OR when it holds Latin with no
+ * Devanagari beside it, while the English side has content — see isNotHindi above.
  *
  * @param edits       current form values (Record<string, string>)
  * @param pairs       array of [hindiKey, englishKey] tuples

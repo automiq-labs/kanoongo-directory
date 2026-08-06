@@ -700,6 +700,18 @@ export default function AdminMemberDetail({
 
   async function handleSaveMember() {
     setSaving(true);
+    /*
+     * The sweep runs BEFORE the dirty check, deliberately. A Save with no edits
+     * at all can therefore still write to the row and add an edit-history entry,
+     * because the sweep may have repaired a Hindi column that was empty or held
+     * Latin residue. That is the point: it is how residue already in the table
+     * self-heals — an admin opening a bad row and pressing Save fixes it, with
+     * no migration and no bulk script.
+     *
+     * Order it the other way and a row whose only defect is a broken Hindi
+     * column would report "no changes" and stay broken forever, since nothing
+     * else about it needs editing.
+     */
     const swept = await sweepEditValues(editValues, MEMBER_FIELDS);
     setEditValues(swept);
     const dirty = getMemberDirty(swept);
@@ -727,6 +739,8 @@ export default function AdminMemberDetail({
     if (!editingSpouseId) return;
     setSpouseSaving(true);
     setSpouseMsg("");
+    // Sweep before the dirty check — see handleSaveMember for why an unedited
+    // Save is allowed to write here.
     const swept = await sweepEditValues(spouseEdits, SPOUSE_FIELDS);
     setSpouseEdits(swept);
     const dirty = computeDirty(swept, spouseOriginal, SPOUSE_FIELDS);
@@ -793,6 +807,8 @@ export default function AdminMemberDetail({
     if (!editingChildId) return;
     setChildSaving(true);
     setChildMsg("");
+    // Sweep before the dirty check — see handleSaveMember for why an unedited
+    // Save is allowed to write here.
     const swept = await sweepEditValues(childEdits, CHILD_FIELDS);
     setChildEdits(swept);
     const dirty = computeDirty(swept, childOriginal, CHILD_FIELDS);
