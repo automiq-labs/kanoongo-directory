@@ -543,8 +543,8 @@ export default function PrintClient({ edition }: { edition: Lang }) {
     return out;
   }, [data, edition]);
 
-  if (error) return <div className="status">Could not build the directory: {error}</div>;
-  if (!data) return <div className="status">Assembling the directory…</div>;
+  if (error) return <div className="status">{t("book_build_failed", edition)}: {error}</div>;
+  if (!data) return <div className="status">{t("book_building", edition)}</div>;
 
   return (
     <div className={`book ${edition === "en" ? "ed-en" : "ed-hi"}`}>

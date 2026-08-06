@@ -509,6 +509,39 @@ const translations = {
   clear_all_filters: { en: "Clear all", hi: "सभी हटाएँ" },
   apply_filters: { en: "Apply", hi: "लागू करें" },
 
+  // Shared form chrome — every one of these used to be a hardcoded English
+  // literal, so the Hindi toggle left it in English (S22).
+  select_placeholder: { en: "— Select —", hi: "— चुनें —" },
+  select_date: { en: "Select date", hi: "तिथि चुनें" },
+  date_picker: { en: "Date picker", hi: "तिथि चयनक" },
+  prev_month: { en: "Previous month", hi: "पिछला माह" },
+  next_month: { en: "Next month", hi: "अगला माह" },
+  close: { en: "Close", hi: "बंद करें" },
+  show_more: { en: "Show more", hi: "और देखें" },
+  show_less: { en: "Show less", hi: "कम देखें" },
+  upload_picture: { en: "Upload Picture", hi: "फ़ोटो अपलोड करें" },
+  change_picture: { en: "Change Picture", hi: "फ़ोटो बदलें" },
+  phone_number: { en: "Phone number", hi: "फ़ोन नंबर" },
+  gotra_other: { en: "Other — type your own", hi: "अन्य — स्वयं लिखें" },
+  gotra_type_en: { en: "Type gotra in English", hi: "गोत्र अंग्रेज़ी में लिखें" },
+  opt_other: { en: "Other", hi: "अन्य" },
+  retry: { en: "retry", hi: "पुनः" },
+  review_badge: { en: "Review", hi: "समीक्षा" },
+  book_building: { en: "Assembling the directory…", hi: "निर्देशिका तैयार हो रही है…" },
+  book_build_failed: { en: "Could not build the directory", hi: "निर्देशिका नहीं बन सकी" },
+
+  // Month / weekday names for DateField and the celebrations chips.
+  month_short: { en: "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", hi: "जन फ़र मार्च अप्रै मई जून जुल अग सित अक्तू नव दिस" },
+  month_full: { en: "January February March April May June July August September October November December", hi: "जनवरी फ़रवरी मार्च अप्रैल मई जून जुलाई अगस्त सितम्बर अक्तूबर नवम्बर दिसम्बर" },
+  weekday_short: { en: "Su Mo Tu We Th Fr Sa", hi: "रवि सोम मंगल बुध गुरु शुक्र शनि" },
+
+  // Deceased marker guard (S22 — three people recorded a death by typing
+  // "LATE" into a name box because the toggle was admin-only).
+  label_is_deceased: { en: "Deceased", hi: "दिवंगत" },
+  deceased_hint: { en: "Turn this on to record that this person has passed away. The honorific is added automatically — do not type it into the name.", hi: "यह चालू करें ताकि दर्ज हो सके कि इनका देहावसान हो चुका है। सम्मानसूचक शब्द स्वयं जुड़ जाता है — उसे नाम में न लिखें।" },
+  deceased_marker_warning: { en: "Please remove the honorific from the name and use the Deceased toggle instead — it is added automatically.", hi: "कृपया नाम से सम्मानसूचक शब्द हटाएँ और उसके बदले “दिवंगत” विकल्प चुनें — वह स्वयं जुड़ जाता है।" },
+  deceased_marker_fix: { en: "Remove it and mark as deceased", hi: "हटाकर दिवंगत चिह्नित करें" },
+
   // Printed directory (PDF export)
   adm_pdf_heading: { en: "Directory PDF", hi: "निर्देशिका पीडीएफ" },
   adm_pdf_desc: { en: "Generates the whole directory as it stands right now, print-ready for A4. Nothing is saved — generate it again whenever families update their details.", hi: "पूरी निर्देशिका इस समय की स्थिति के अनुसार बनाता है, A4 पर छपाई के लिए तैयार। कुछ सहेजा नहीं जाता — परिवारों द्वारा विवरण अपडेट करने पर दोबारा बनाएं।" },

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useLang } from "@/lib/language-context";
-import { t } from "@/lib/translations";
+import { t, type Lang } from "@/lib/translations";
 import { bi } from "@/lib/bilingual";
 import { getCelebrations, type Celebration } from "@/lib/celebrations";
 import LanguageToggle from "@/app/language-toggle";
@@ -21,11 +21,11 @@ function daysLabel(n: number, lang: string): string {
   return lang === "en" ? `in ${n} days` : `${n} दिन में`;
 }
 
-const SHORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-function formatDateChip(isoDate: string): string {
+/** S22: month names were a hardcoded English array, so the chips read "12 Mar"
+ *  under the Hindi toggle. */
+function formatDateChip(isoDate: string, lang: Lang): string {
   const d = new Date(isoDate + "T00:00:00");
-  return `${d.getDate()} ${SHORT_MONTHS[d.getMonth()]}`;
+  return `${d.getDate()} ${t("month_short", lang).split(" ")[d.getMonth()]}`;
 }
 
 interface Section {
@@ -191,7 +191,7 @@ export default function CelebrationsPage() {
 
                       {/* Date chip */}
                       <span className="shrink-0 rounded-[var(--r-sm)] bg-[var(--cream-panel)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted)]">
-                        {formatDateChip(c.next_date)}
+                        {formatDateChip(c.next_date, lang)}
                       </span>
                     </Link>
                   </FadeIn>

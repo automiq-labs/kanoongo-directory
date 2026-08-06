@@ -35,6 +35,23 @@ export function hasLateMarker(name: string): boolean {
   return LATE_MARKERS.some((re) => re.test(name));
 }
 
+/**
+ * The name with a leading deceased marker removed, for the editor's "remove it
+ * and mark as deceased" action (S22). Driven by the same LATE_MARKERS list as
+ * the render-time guard so the two can never disagree — in particular the
+ * abbreviated स्व: / स्व. still requires its punctuation, so स्वेता is untouched.
+ *
+ * Only one marker is stripped: "Late Late X" is a data error worth leaving
+ * visible rather than silently tidying.
+ */
+export function stripLateMarker(name: string): string {
+  for (const re of LATE_MARKERS) {
+    const m = re.exec(name);
+    if (m) return name.slice(m[0].length).trim();
+  }
+  return name.trim();
+}
+
 /** The honorific plus its trailing space, e.g. "Late " / "स्वर्गीया ". */
 export function deceasedPrefix(lang: Lang, gender: string | null | undefined): string {
   const key = gender === "F" || gender === "female" ? "honorific_late_f" : "honorific_late";

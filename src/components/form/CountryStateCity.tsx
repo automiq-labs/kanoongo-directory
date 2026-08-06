@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { COUNTRIES, INDIA_STATES, INDIA_CITIES } from "@/lib/form-options";
+import { useLang } from "@/lib/language-context";
+import { t } from "@/lib/translations";
 
 const OTHER_SENTINEL = "__other__";
 
@@ -63,6 +65,7 @@ export default function CountryStateCity({
   cityEn,
   onChange,
 }: CountryStateCityProps) {
+  const { lang } = useLang();
   const countryIdx = findCountryIdx(country, countryEn);
   const isIndia =
     countryIdx === 0 ||
@@ -188,7 +191,7 @@ export default function CountryStateCity({
               {c.en} — {c.hi}
             </option>
           ))}
-          <option value={OTHER_SENTINEL}>Other</option>
+          <option value={OTHER_SENTINEL}>{t("opt_other", lang)}</option>
         </select>
         {countryOtherMode && (
           <div className="mt-2 space-y-2">
@@ -196,7 +199,7 @@ export default function CountryStateCity({
               type="text"
               value={countryEn}
               onChange={(e) => onChange({ countryEn: e.target.value })}
-              placeholder="Country (English)"
+              placeholder={t("adm_field_country_en", lang)}
               className={inputClass}
             />
             <input
@@ -219,13 +222,13 @@ export default function CountryStateCity({
             onChange={(e) => handleStateChange(e.target.value)}
             className={inputClass}
           >
-            <option value="">— Select —</option>
+            <option value="">{t("select_placeholder", lang)}</option>
             {INDIA_STATES.map((s, i) => (
               <option key={i} value={String(i)}>
                 {s.en} — {s.hi}
               </option>
             ))}
-            <option value={OTHER_SENTINEL}>Other</option>
+            <option value={OTHER_SENTINEL}>{t("opt_other", lang)}</option>
           </select>
           {stateOtherMode && (
             <div className="mt-2 space-y-2">
@@ -233,7 +236,7 @@ export default function CountryStateCity({
                 type="text"
                 value={stateEn}
                 onChange={(e) => onChange({ stateEn: e.target.value })}
-                placeholder="State (English)"
+                placeholder={t("adm_field_state_en", lang)}
                 className={inputClass}
               />
               <input
@@ -254,7 +257,7 @@ export default function CountryStateCity({
               type="text"
               value={stateEn}
               onChange={(e) => onChange({ stateEn: e.target.value })}
-              placeholder="State (English)"
+              placeholder={t("adm_field_state_en", lang)}
               className={inputClass}
             />
             <input
@@ -277,13 +280,13 @@ export default function CountryStateCity({
             onChange={(e) => handleCityChange(e.target.value)}
             className={inputClass}
           >
-            <option value="">— Select —</option>
+            <option value="">{t("select_placeholder", lang)}</option>
             {cities.map((c, i) => (
               <option key={i} value={String(i)}>
                 {c.en} — {c.hi}
               </option>
             ))}
-            <option value={OTHER_SENTINEL}>Other</option>
+            <option value={OTHER_SENTINEL}>{t("opt_other", lang)}</option>
           </select>
           {cityOtherMode && (
             <div className="mt-2 space-y-2">
@@ -291,7 +294,7 @@ export default function CountryStateCity({
                 type="text"
                 value={cityEn}
                 onChange={(e) => onChange({ cityEn: e.target.value })}
-                placeholder="City (English)"
+                placeholder={t("adm_field_city_en", lang)}
                 className={inputClass}
               />
               <input
@@ -312,7 +315,7 @@ export default function CountryStateCity({
               type="text"
               value={cityEn}
               onChange={(e) => onChange({ cityEn: e.target.value })}
-              placeholder="City (English)"
+              placeholder={t("adm_field_city_en", lang)}
               className={inputClass}
             />
             <input

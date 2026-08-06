@@ -71,7 +71,7 @@ export default function AdminDaughtersPopup({
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted)] hover:bg-[var(--cream-panel)] hover:text-[var(--maroon)]"
-            aria-label="Close"
+            aria-label={t("close", lang)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

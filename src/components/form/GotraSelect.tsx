@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { GOTRAS } from "@/lib/form-options";
+import { useLang } from "@/lib/language-context";
+import { t } from "@/lib/translations";
 
 const OTHER_SENTINEL = "__other__";
 
@@ -18,6 +20,7 @@ export default function GotraSelect({
   onChange,
   label,
 }: GotraSelectProps) {
+  const { lang } = useLang();
   // Determine if current value matches a known gotra
   const matchIdx = GOTRAS.findIndex(
     (g) =>
@@ -66,13 +69,13 @@ export default function GotraSelect({
         onChange={(e) => handleSelect(e.target.value)}
         className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
       >
-        <option value="">— Select —</option>
+        <option value="">{t("select_placeholder", lang)}</option>
         {GOTRAS.map((g, i) => (
           <option key={i} value={String(i)}>
             {g.en} — {g.hi}
           </option>
         ))}
-        <option value={OTHER_SENTINEL}>Other — type your own</option>
+        <option value={OTHER_SENTINEL}>{t("gotra_other", lang)}</option>
       </select>
 
       {showOther && (
@@ -85,7 +88,7 @@ export default function GotraSelect({
               type="text"
               value={valueEn}
               onChange={(e) => onChange(valueHi, e.target.value)}
-              placeholder="Type gotra in English"
+              placeholder={t("gotra_type_en", lang)}
               className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
             />
           </div>

@@ -5,8 +5,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang, type TranslationKey } from "@/lib/translations";
 import type { SpouseRelative, MarriedDaughter } from "@/lib/types";
-import { bi } from "@/lib/bilingual";
-import { transliteratePhrase, useAutoHindi, sweepAutoHindi } from "@/lib/transliterate";
+import { bi, maritalStatusLabel } from "@/lib/bilingual";
+import { transliteratePhrase, useAutoHindi, sweepAutoHindi, fillMissingEnglish } from "@/lib/transliterate";
 import { removeSpouseRelatives } from "@/lib/spouse-cascade";
 import { logEditHistory } from "@/lib/edit-history";
 import { changedFieldLabels } from "@/lib/field-labels";
@@ -160,6 +160,45 @@ const MEMBER_FIELDS: FieldDef[] = [
   { key: "notes_en", label: "adm_field_notes_en", group: "notes", type: "textarea", maxLength: 1000 },
 ];
 
+/**
+ * Bilingual pairs, derived from the `enCounterpart` metadata the field defs
+ * already carry — so a new bilingual field is swept the moment it declares its
+ * counterpart, with no second list to keep in step.
+ *
+ * S22: before this, the admin member / spouse / child save paths had no sweep at
+ * all. The only way to fill a Hindi column was the manual "अ" button, so an
+ * admin who filled the English side and hit Save left the Hindi side empty —
+ * and every one of those rows then rendered blank under the Hindi toggle.
+ */
+function pairsFromFields(fields: (FieldDef | SimpleFieldDef)[]): [string, string][] {
+  return fields
+    .filter((f) => f.enCounterpart)
+    .map((f) => [f.key, f.enCounterpart!] as [string, string]);
+}
+
+/** Narrow an edit record to the string values the sweep helpers operate on. */
+function pairValues(
+  vals: Record<string, unknown>,
+  pairs: [string, string][],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [hiKey, enKey] of pairs) {
+    for (const k of [hiKey, enKey]) out[k] = String(vals[k] ?? "");
+  }
+  return out;
+}
+
+/** Sweep both directions and merge the result back over the full edit record. */
+async function sweepEditValues<T extends Record<string, unknown>>(
+  vals: T,
+  fields: (FieldDef | SimpleFieldDef)[],
+): Promise<T> {
+  const pairs = pairsFromFields(fields);
+  if (pairs.length === 0) return vals;
+  const swept = await sweepAutoHindi(fillMissingEnglish(pairValues(vals, pairs), pairs), pairs);
+  return { ...vals, ...swept };
+}
+
 const GROUP_LABELS: Record<string, TranslationKey> = {
   identity: "adm_group_identity",
   contact: "adm_group_contact",
@@ -260,6 +299,7 @@ function EnHiPair({ label, enVal, hiVal, onEnChange, onHiChange, textarea }: {
   onEnChange: (v: string) => void; onHiChange: (v: string) => void;
   textarea?: boolean;
 }) {
+  const { lang } = useLang();
   const [filling, setFilling] = useState(false);
   const [btnBusy, setBtnBusy] = useState(false);
   const [btnErr, setBtnErr] = useState(false);
@@ -297,7 +337,7 @@ function EnHiPair({ label, enVal, hiVal, onEnChange, onHiChange, textarea }: {
           {textarea ? <textarea value={hiVal} onChange={(e) => onHiChange(e.target.value)} rows={2} placeholder="हिंदी" className={cls + " min-h-[56px] resize-y"} />
             : <input type="text" value={hiVal} onChange={(e) => onHiChange(e.target.value)} placeholder="हिंदी" className={cls} />}
           {filling && <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--gold)] animate-pulse">···</span>}
-          {btnErr && <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--maroon)]">retry</span>}
+          {btnErr && <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--maroon)]">{t("retry", lang)}</span>}
         </div>
       </div>
     </div>
@@ -644,24 +684,26 @@ export default function AdminMemberDetail({
     setEditValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  function getMemberDirty(): Record<string, unknown> {
+  function getMemberDirty(vals: Record<string, unknown> = editValues): Record<string, unknown> {
     const dirty: Record<string, unknown> = {};
-    for (const key of Object.keys(editValues)) {
+    for (const key of Object.keys(vals)) {
       const o = String(originalValues[key] ?? "");
-      const c = String(editValues[key] ?? "");
+      const c = String(vals[key] ?? "");
       if (o !== c) {
         const fd = MEMBER_FIELDS.find((f) => f.key === key);
-        if (fd?.type === "checkbox") dirty[key] = Boolean(editValues[key]);
-        else dirty[key] = editValues[key] === "" ? null : editValues[key];
+        if (fd?.type === "checkbox") dirty[key] = Boolean(vals[key]);
+        else dirty[key] = vals[key] === "" ? null : vals[key];
       }
     }
     return dirty;
   }
 
   async function handleSaveMember() {
-    const dirty = getMemberDirty();
-    if (Object.keys(dirty).length === 0) { setSaveMsg(t("adm_no_changes", lang)); return; }
     setSaving(true);
+    const swept = await sweepEditValues(editValues, MEMBER_FIELDS);
+    setEditValues(swept);
+    const dirty = getMemberDirty(swept);
+    if (Object.keys(dirty).length === 0) { setSaveMsg(t("adm_no_changes", lang)); setSaving(false); return; }
     setSaveMsg("");
     const { error: err } = await supabase.rpc("admin_update_member", {
       p_member_id: currentId,
@@ -683,10 +725,12 @@ export default function AdminMemberDetail({
 
   async function handleSaveSpouse() {
     if (!editingSpouseId) return;
-    const dirty = computeDirty(spouseEdits, spouseOriginal, SPOUSE_FIELDS);
-    if (Object.keys(dirty).length === 0) { setSpouseMsg(t("adm_no_changes", lang)); return; }
     setSpouseSaving(true);
     setSpouseMsg("");
+    const swept = await sweepEditValues(spouseEdits, SPOUSE_FIELDS);
+    setSpouseEdits(swept);
+    const dirty = computeDirty(swept, spouseOriginal, SPOUSE_FIELDS);
+    if (Object.keys(dirty).length === 0) { setSpouseMsg(t("adm_no_changes", lang)); setSpouseSaving(false); return; }
     const { error: err } = await supabase.rpc("admin_update_spouse", {
       p_spouse_id: editingSpouseId,
       p_fields: dirty,
@@ -718,18 +762,19 @@ export default function AdminMemberDetail({
 
   async function handleAddSpouse() {
     setAddSpouseSaving(true);
+    const v = await sweepEditValues(addSpouseVals, SPOUSE_FIELDS);
     const { error: err } = await supabase.rpc("add_spouse", {
       p_member_id: currentId,
-      p_full_name: addSpouseVals.full_name?.trim() || "",
-      p_full_name_en: addSpouseVals.full_name_en?.trim() || null,
-      p_gender: addSpouseVals.gender || null,
-      p_father_name: addSpouseVals.father_name?.trim() || null,
-      p_father_name_en: addSpouseVals.father_name_en?.trim() || null,
-      p_birth_gotra: addSpouseVals.birth_gotra?.trim() || null,
-      p_birth_gotra_en: addSpouseVals.birth_gotra_en?.trim() || null,
-      p_dob: addSpouseVals.dob || null,
-      p_education: addSpouseVals.education?.trim() || null,
-      p_education_en: addSpouseVals.education_en?.trim() || null,
+      p_full_name: v.full_name?.trim() || "",
+      p_full_name_en: v.full_name_en?.trim() || null,
+      p_gender: v.gender || null,
+      p_father_name: v.father_name?.trim() || null,
+      p_father_name_en: v.father_name_en?.trim() || null,
+      p_birth_gotra: v.birth_gotra?.trim() || null,
+      p_birth_gotra_en: v.birth_gotra_en?.trim() || null,
+      p_dob: v.dob || null,
+      p_education: v.education?.trim() || null,
+      p_education_en: v.education_en?.trim() || null,
     });
     if (!err) { setShowAddSpouse(false); setAddSpouseVals({}); await fetchDetail(currentId); onRefresh(); }
     setAddSpouseSaving(false);
@@ -746,10 +791,12 @@ export default function AdminMemberDetail({
 
   async function handleSaveChild() {
     if (!editingChildId) return;
-    const dirty = computeDirty(childEdits, childOriginal, CHILD_FIELDS);
-    if (Object.keys(dirty).length === 0) { setChildMsg(t("adm_no_changes", lang)); return; }
     setChildSaving(true);
     setChildMsg("");
+    const swept = await sweepEditValues(childEdits, CHILD_FIELDS);
+    setChildEdits(swept);
+    const dirty = computeDirty(swept, childOriginal, CHILD_FIELDS);
+    if (Object.keys(dirty).length === 0) { setChildMsg(t("adm_no_changes", lang)); setChildSaving(false); return; }
     const { error: err } = await supabase.rpc("admin_update_child", {
       p_child_id: editingChildId,
       p_fields: dirty,
@@ -778,15 +825,16 @@ export default function AdminMemberDetail({
 
   async function handleAddChild() {
     setAddChildSaving(true);
+    const v = await sweepEditValues(addChildVals, CHILD_FIELDS);
     const { error: err } = await supabase.rpc("add_child", {
       p_parent_member_id: currentId,
-      p_full_name: addChildVals.full_name?.trim() || "",
-      p_full_name_en: addChildVals.full_name_en?.trim() || null,
-      p_gender: addChildVals.gender || null,
-      p_dob: addChildVals.dob || null,
-      p_education: addChildVals.education?.trim() || null,
-      p_education_en: addChildVals.education_en?.trim() || null,
-      p_marital_status: addChildVals.marital_status?.trim() || null,
+      p_full_name: v.full_name?.trim() || "",
+      p_full_name_en: v.full_name_en?.trim() || null,
+      p_gender: v.gender || null,
+      p_dob: v.dob || null,
+      p_education: v.education?.trim() || null,
+      p_education_en: v.education_en?.trim() || null,
+      p_marital_status: v.marital_status?.trim() || null,
     });
     if (!err) { setShowAddChild(false); setAddChildVals({}); await fetchDetail(currentId); onRefresh(); }
     setAddChildSaving(false);
@@ -973,7 +1021,7 @@ export default function AdminMemberDetail({
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-[var(--muted)] hover:bg-[var(--cream-panel)] hover:text-[var(--maroon)]"
-            aria-label="Close"
+            aria-label={t("close", lang)}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1322,7 +1370,7 @@ export default function AdminMemberDetail({
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-medium text-[var(--maroon-deep)]">{childName}</p>
-                          <p className="text-[11px] text-[var(--muted)]">{ch.child_id} · {genderLabel(ch.gender, lang)}{ch.marital_status ? ` · ${ch.marital_status}` : ""}</p>
+                          <p className="text-[11px] text-[var(--muted)]">{ch.child_id} · {genderLabel(ch.gender, lang)}{ch.marital_status ? ` · ${maritalStatusLabel(ch.marital_status, lang) || ""}` : ""}</p>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => editingChildId === ch.child_id ? setEditingChildId(null) : startEditChild(ch)} className="text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
@@ -1448,7 +1496,7 @@ export default function AdminMemberDetail({
                           <span className={`text-sm font-medium ${isRemoved ? "line-through text-[var(--muted)]" : "text-[var(--maroon-deep)]"}`}>पति: {dHusband || "—"}</span>
                           {dCity && <span className="text-[11px] text-[var(--muted)]">· {dCity}</span>}
                           {d.mobile && <span className="text-[11px] text-[var(--muted)]">· {d.mobile}</span>}
-                          {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">समीक्षा करें / Review</span>}
+                          {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">{t("review_badge", lang)}</span>}
                           {isRemoved && <span className="text-[10px] text-[var(--muted)]">({d.removed_at})</span>}
                         </div>
                         {dSasur && <p className="mt-0.5 text-[11px] text-[var(--muted)]">ससुर: {dSasur}</p>}
@@ -1922,7 +1970,7 @@ function AdminMDBlock({ memberId, daughters, supabase, lang, familyId, actorId, 
                 {d.d_member_id && <a href={`/family/${d.d_member_id}`} className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.12)] px-1.5 py-0.5 text-[9px] font-semibold text-[var(--gold-deep)] hover:underline">{d.d_member_id}</a>}
                 {dHusband && <span className="text-[11px] text-[var(--muted)]">· पति: {dHusband}</span>}
                 {dCity && <span className="text-[11px] text-[var(--muted)]">· {dCity}</span>}
-                {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">Review</span>}
+                {d.needs_review && <span className="rounded-[var(--r-pill)] bg-[rgba(201,150,46,0.15)] px-1.5 py-0.5 text-[9px] font-semibold text-amber-700">{t("review_badge", lang)}</span>}
               </div>
               <div className="flex gap-1.5">
                 <button onClick={() => editId === d.md_id ? setEditId(null) : startEdit(d)} className="text-[11px] text-[var(--gold-deep)]">{editId === d.md_id ? t("adm_close_edit", lang) : t("adm_edit_btn", lang)}</button>

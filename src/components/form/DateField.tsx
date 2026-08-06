@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useLang } from "@/lib/language-context";
+import { t, type Lang } from "@/lib/translations";
 
 interface DateFieldProps {
   value: string;
@@ -9,17 +11,15 @@ interface DateFieldProps {
   placeholder?: string;
 }
 
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-const MONTH_NAMES_FULL = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-const DAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+/**
+ * S22: month and weekday names were hardcoded English arrays and the component
+ * took no language at all, so every date field in the app — the most common way
+ * a birth date is entered — stayed fully English under the Hindi toggle.
+ * They now come from translations.ts as space-separated lists.
+ */
+const monthNames = (lang: Lang) => t("month_short", lang).split(" ");
+const monthNamesFull = (lang: Lang) => t("month_full", lang).split(" ");
+const dayLabels = (lang: Lang) => t("weekday_short", lang).split(" ");
 
 function parseISO(v: string): { year: number; month: number; day: number } | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
@@ -31,10 +31,10 @@ function toISO(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function formatDisplay(v: string): string {
+function formatDisplay(v: string, lang: Lang): string {
   const parsed = parseISO(v);
   if (!parsed) return v || "";
-  return `${parsed.day} ${MONTH_NAMES[parsed.month]} ${parsed.year}`;
+  return `${parsed.day} ${monthNames(lang)[parsed.month]} ${parsed.year}`;
 }
 
 function daysInMonth(year: number, month: number): number {
@@ -49,8 +49,9 @@ export default function DateField({
   value,
   onChange,
   label,
-  placeholder = "Select date",
+  placeholder,
 }: DateFieldProps) {
+  const { lang } = useLang();
   const [open, setOpen] = useState(false);
   const [yearInput, setYearInput] = useState(false);
 
@@ -143,7 +144,7 @@ export default function DateField({
   for (let i = 0; i < startDay; i++) cells.push(null);
   for (let d = 1; d <= totalDays; d++) cells.push(d);
 
-  const displayText = formatDisplay(value);
+  const displayText = formatDisplay(value, lang);
 
   return (
     <div className="relative border-b border-[var(--hairline)] py-2 last:border-0" ref={containerRef}>
@@ -160,7 +161,7 @@ export default function DateField({
         className="flex min-h-[48px] w-full items-center rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-left text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
       >
         <span className={displayText ? "" : "text-[var(--muted)]"}>
-          {displayText || placeholder}
+          {displayText || placeholder || t("select_date", lang)}
         </span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -180,7 +181,7 @@ export default function DateField({
           className="absolute left-0 z-50 mt-1 w-full min-w-[280px] rounded-[var(--r-lg)] border border-[#ECE0C8] bg-[var(--raised)] shadow-[var(--shadow-lift)] motion-safe:animate-[fadeIn_var(--dur-fast)_var(--ease-out)]"
           role="dialog"
           aria-modal="true"
-          aria-label="Date picker"
+          aria-label={t("date_picker", lang)}
         >
           {/* Header */}
           <div className="flex items-center justify-between rounded-t-[var(--r-lg)] bg-[var(--maroon)] px-3 py-2.5">
@@ -188,7 +189,7 @@ export default function DateField({
               type="button"
               onClick={prevMonth}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
-              aria-label="Previous month"
+              aria-label={t("prev_month", lang)}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -197,7 +198,7 @@ export default function DateField({
 
             <div className="flex items-center gap-1.5">
               <span className="font-display text-sm font-semibold text-[var(--ivory)]">
-                {MONTH_NAMES_FULL[viewMonth]}
+                {monthNamesFull(lang)[viewMonth]}
               </span>
               {yearInput ? (
                 <input
@@ -227,7 +228,7 @@ export default function DateField({
               type="button"
               onClick={nextMonth}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--gold)] hover:bg-[var(--maroon-deep)]"
-              aria-label="Next month"
+              aria-label={t("next_month", lang)}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -237,7 +238,7 @@ export default function DateField({
 
           {/* Day labels */}
           <div className="grid grid-cols-7 border-b border-[var(--hairline)] px-2 py-1.5">
-            {DAY_LABELS.map((d) => (
+            {dayLabels(lang).map((d) => (
               <div key={d} className="text-center text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">
                 {d}
               </div>

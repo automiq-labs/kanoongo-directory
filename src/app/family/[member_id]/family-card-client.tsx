@@ -6,12 +6,12 @@ import { useRouter } from "next/navigation";
 import { Member, Spouse, Child, type SpouseRelative, type MarriedDaughter } from "@/lib/types";
 import { useLang } from "@/lib/language-context";
 import { t, type Lang } from "@/lib/translations";
-import { bi } from "@/lib/bilingual";
+import { bi, maritalStatusLabel } from "@/lib/bilingual";
 import { createClient } from "@/lib/supabase/client";
-import { useAutoHindi, sweepAutoHindi, transliteratePhrase } from "@/lib/transliterate";
+import { useAutoHindi, sweepAutoHindi, fillMissingEnglish, transliteratePhrase } from "@/lib/transliterate";
 import { removeSpouseRelatives } from "@/lib/spouse-cascade";
 import { logEditHistory } from "@/lib/edit-history";
-import { memberDisplayName, spouseDisplayName } from "@/lib/display-name";
+import { memberDisplayName, spouseDisplayName, hasLateMarker, stripLateMarker } from "@/lib/display-name";
 import { validateImage, uploadPhoto, createPreviewUrl } from "@/lib/photo-utils";
 import LanguageToggle from "@/app/language-toggle";
 import BottomNav from "@/app/bottom-nav";
@@ -244,6 +244,9 @@ interface MemberEdits {
   state_en: string;
   notes: string;
   notes_en: string;
+  /** "yes" or "" — kept a string so it flows through the Record<string,string> setters. */
+  is_deceased: string;
+  date_of_death: string;
 }
 
 interface SpouseEdits {
@@ -310,6 +313,8 @@ function memberToEdits(m: Member): MemberEdits {
     state_en: m.state_en || "",
     notes: m.notes || "",
     notes_en: m.notes_en || "",
+    is_deceased: m.is_deceased ? "yes" : "",
+    date_of_death: m.date_of_death || "",
   };
 }
 
@@ -362,23 +367,34 @@ function langKeys(
   return { activeKey: baseField, otherKey: `${baseField}_en` };
 }
 
-/** Set edit value for active language, auto-fill other if empty.
- *  When lang=en, we skip the Hindi auto-copy — useAutoHindi handles transliteration.
- *  When lang=hi, we still copy verbatim to the _en field if it's empty. */
+/**
+ * Set the edit value for the active language. The counterpart column is NEVER
+ * written here.
+ *
+ * This function used to mirror the typed value into the other column whenever
+ * that column was empty. The emptiness test read `edits[otherKey]` — the state
+ * from *before* the current keystroke — so the very first character mirrored
+ * across and every character after it found the column non-empty and stopped.
+ * The counterpart was then frozen at one character forever, because both repair
+ * paths (useAutoHindi and sweepAutoHindi) treat a non-empty value as
+ * user-authored. That is the S22 corruption: M0017.gotra held "D" against
+ * "Dusad", N0001.addr_line1 held "9" against "90/1".
+ *
+ * The lang=en leg of the mirror was removed in b721798; this removes the lang=hi
+ * leg, which was still writing a single Devanagari character into `_en` columns
+ * where no Latin-character audit could see it.
+ *
+ * Filling the counterpart now happens once, at save, on the complete value —
+ * sweepAutoHindi for en→hi and fillMissingEnglish for hi→en.
+ */
 function setEditVal(
   edits: Record<string, string>,
   baseField: string,
   lang: Lang,
   value: string
 ): Record<string, string> {
-  const { activeKey, otherKey } = langKeys(baseField, lang);
-  const updated = { ...edits, [activeKey]: value };
-  // When user types in Hindi (lang=hi), copy to English if empty
-  // When user types in English (lang=en), do NOT copy to Hindi — transliteration hook handles it
-  if (lang === "hi" && !edits[otherKey]) {
-    updated[otherKey] = value;
-  }
-  return updated;
+  const { activeKey } = langKeys(baseField, lang);
+  return { ...edits, [activeKey]: value };
 }
 
 // ── Build update payload: only changed bilingual fields ─────────────────────
@@ -487,6 +503,13 @@ function RelationDropdown({
   );
 }
 
+/** Bilingual pairs on spouse_relatives, per the S22 column inventory. */
+const REL_PAIRS: [string, string][] = [
+  ["full_name", "full_name_en"], ["relation_label", "relation_label_en"],
+  ["addr", "addr_en"], ["city", "city_en"],
+  ["occupation", "occupation_en"], ["notes", "notes_en"],
+];
+
 function SpouseRelativesEditor({
   spouseId,
   relatives,
@@ -574,16 +597,18 @@ function SpouseRelativesEditor({
     if (Object.keys(dirty).length === 0) { setEditingId(null); return; } // nothing changed
     setEditSaving(true);
     const supabase = createClient();
-    // Auto-transliterate Hindi fields if English changed and Hindi wasn't touched
-    const nameEn = dirty.full_name_en;
-    const [nameHi, cityHi, addrHi] = await Promise.all([
-      nameEn && !dirty.full_name && !editVals.full_name?.trim() ? transliteratePhrase(String(nameEn)) : null,
-      dirty.city_en && !dirty.city && !editVals.city?.trim() ? transliteratePhrase(String(dirty.city_en)) : null,
-      dirty.addr_en && !dirty.addr && !editVals.addr?.trim() ? transliteratePhrase(String(dirty.addr_en)) : null,
-    ]);
-    if (nameHi) dirty.full_name = nameHi;
-    if (cityHi) dirty.city = cityHi;
-    if (addrHi) dirty.addr = addrHi;
+    // S22: the old per-field transliteration here only fired when a `_en` key was
+    // dirty, but city and addr have no `_en` input — so an English city typed into
+    // the Hindi box went straight to the Hindi column and nothing ever repaired it.
+    // Sweep the whole edit set instead, then narrow back to the dirty keys.
+    const swept = await sweepAutoHindi(fillMissingEnglish(editVals, REL_PAIRS), REL_PAIRS);
+    for (const [hiKey, enKey] of REL_PAIRS) {
+      for (const k of [hiKey, enKey]) {
+        const before = (editVals[k] || "").trim();
+        const after = (swept[k] || "").trim();
+        if (after && after !== before) dirty[k] = after;
+      }
+    }
     const { error } = await supabase.rpc("update_spouse_relative", { p_relative_id: editingId, p_fields: dirty });
     if (error) {
       console.error("update_spouse_relative error:", error);
@@ -700,7 +725,7 @@ function SpouseRelativesEditor({
 
 // ── Collapsible note ────────────────────────────────────────────────────────
 
-function CollapsibleNote({ text, label }: { text: string; label: string }) {
+function CollapsibleNote({ text, label, lang }: { text: string; label: string; lang: Lang }) {
   const [open, setOpen] = useState(false);
   const isLong = text.length > 120;
   return (
@@ -711,7 +736,7 @@ function CollapsibleNote({ text, label }: { text: string; label: string }) {
       </p>
       {isLong && (
         <button onClick={() => setOpen(!open)} className="mt-0.5 text-[11px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]">
-          {open ? "▲" : "और देखें / Show more"}
+          {open ? t("show_less", lang) : t("show_more", lang)}
         </button>
       )}
     </div>
@@ -721,6 +746,20 @@ function CollapsibleNote({ text, label }: { text: string; label: string }) {
 // ── Sasural editor (daughter's own card) ─────────────────────────────────────
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Bilingual pairs on married_daughters, per the S22 column inventory.
+ * `education` and `children_note` were absent from every sweep before S22: the
+ * add path wrote them verbatim into the Hindi column and never set `_en`, and
+ * the edit path had no sweep at all.
+ */
+const MD_PAIRS: [string, string][] = [
+  ["full_name", "full_name_en"], ["relation_label", "relation_label_en"],
+  ["husband_name", "husband_name_en"], ["sasur_name", "sasur_name_en"],
+  ["addr", "addr_en"], ["city", "city_en"],
+  ["education", "education_en"], ["occupation", "occupation_en"],
+  ["children_note", "children_note_en"], ["notes", "notes_en"],
+];
 
 function SasuralEditor({
   member, details, lang, familyId, userId, onRefresh,
@@ -762,30 +801,26 @@ function SasuralEditor({
     if (addVals.dom && !DATE_RE.test(addVals.dom)) { setAddErr("YYYY-MM-DD"); return; }
     setSaving(true);
     const supabase = createClient();
-    const [husbandHi, sasurHi, cityHi, addrHi] = await Promise.all([
-      addVals.husband_name?.trim() ? transliteratePhrase(addVals.husband_name.trim()) : null,
-      addVals.sasur_name?.trim() ? transliteratePhrase(addVals.sasur_name.trim()) : null,
-      addVals.city?.trim() ? transliteratePhrase(addVals.city.trim()) : null,
-      addVals.addr?.trim() ? transliteratePhrase(addVals.addr.trim()) : null,
-    ]);
+    // The single-input form writes the Hindi column; the sweep pair fills the
+    // English side and transliterates anything Latin back into Devanagari.
+    // education and children_note are in MD_PAIRS now — before S22 they were
+    // written verbatim to the Hindi column with no `_en` counterpart at all.
+    const swept = await sweepAutoHindi(fillMissingEnglish(addVals, MD_PAIRS), MD_PAIRS);
     const fields: Record<string, string | null> = {
       relation_label: "बेटी/बहन", relation_label_en: "Daughter/Sister",
       d_member_id: member.member_id,
       full_name: member.full_name, full_name_en: member.full_name_en,
     };
-    if (husbandHi || addVals.husband_name?.trim()) fields.husband_name = husbandHi || addVals.husband_name!.trim();
-    if (addVals.husband_name?.trim()) fields.husband_name_en = addVals.husband_name.trim();
-    if (sasurHi || addVals.sasur_name?.trim()) fields.sasur_name = sasurHi || addVals.sasur_name!.trim();
-    if (addVals.sasur_name?.trim()) fields.sasur_name_en = addVals.sasur_name.trim();
-    if (cityHi || addVals.city?.trim()) fields.city = cityHi || addVals.city!.trim();
-    if (addVals.city?.trim()) fields.city_en = addVals.city.trim();
-    if (addrHi || addVals.addr?.trim()) fields.addr = addrHi || addVals.addr!.trim();
-    if (addVals.addr?.trim()) fields.addr_en = addVals.addr.trim();
+    for (const [hiKey, enKey] of MD_PAIRS) {
+      if (hiKey === "full_name" || hiKey === "relation_label") continue; // set above
+      for (const k of [hiKey, enKey]) {
+        const v = (swept[k] || "").trim();
+        if (v) fields[k] = v;
+      }
+    }
     if (addVals.mobile?.trim()) fields.mobile = addVals.mobile.trim();
     if (addVals.husband_mobile?.trim()) fields.husband_mobile = addVals.husband_mobile.trim();
-    if (addVals.education?.trim()) fields.education = addVals.education.trim();
     if (addVals.dom?.trim()) fields.dom = addVals.dom.trim();
-    if (addVals.children_note?.trim()) fields.children_note = addVals.children_note.trim();
     const { error } = await supabase.rpc("add_married_daughter", { p_member_id: member.father_member_id, p_fields: fields });
     if (error) { setAddErr(mapDedupError(error.message, lang) || error.message); setSaving(false); return; }
     setShowAdd(false); setAddVals({}); setSaving(false); onRefresh();
@@ -808,6 +843,16 @@ function SasuralEditor({
     if (Object.keys(fields).length === 0) { setEditingId(null); return; } // nothing changed
     setEditSaving(true);
     const supabase = createClient();
+    // S22: this path had no sweep whatsoever. Every input here binds to a Hindi
+    // column, so English typed into any of them landed in the Hindi column raw.
+    const swept = await sweepAutoHindi(fillMissingEnglish(editVals, MD_PAIRS), MD_PAIRS);
+    for (const [hiKey, enKey] of MD_PAIRS) {
+      for (const k of [hiKey, enKey]) {
+        const before = (editVals[k] || "").trim();
+        const after = (swept[k] || "").trim();
+        if (after && after !== before) fields[k] = after;
+      }
+    }
     const { error } = await supabase.rpc("update_married_daughter", { p_md_id: editingId, p_fields: fields });
     if (error) { setEditErr(error.message); setEditSaving(false); return; }
     // The RPC writes no history of its own — record it here (S9 pattern).
@@ -1314,6 +1359,23 @@ export default function FamilyCardClient({
     setMemberEdits((prev) => ({ ...prev, [field]: value }));
   }
 
+  /**
+   * S22: a name saved with an embedded deceased honorific. Both name columns are
+   * checked because either one can carry it — the marker has turned up in Latin
+   * ("LATE …") and in Devanagari, and bi() falls back across the pair.
+   */
+  const nameHasLateMarker =
+    hasLateMarker(memberEdits.full_name) || hasLateMarker(memberEdits.full_name_en);
+
+  function stripLateMarkerFromName() {
+    setMemberEdits((prev) => ({
+      ...prev,
+      full_name: stripLateMarker(prev.full_name),
+      full_name_en: stripLateMarker(prev.full_name_en),
+      is_deceased: "yes",
+    }));
+  }
+
   function setSpousePlain(idx: number, field: keyof SpouseEdits, value: string) {
     setSpouseEdits((prev) => {
       const copy = [...prev];
@@ -1344,7 +1406,15 @@ export default function FamilyCardClient({
         ["addr_line1", "addr_line1_en"], ["addr_line2", "addr_line2_en"], ["city", "city_en"],
         ["state", "state_en"], ["country", "country_en"], ["gotra", "gotra_en"], ["husband_name", "husband_name_en"], ["notes", "notes_en"],
       ];
-      const sweptMember = await sweepAutoHindi(memberEdits as unknown as Record<string, string>, memberPairs);
+      // hi→en verbatim FIRST, then en→hi by transliteration. The order matters:
+      // filling English first means a Latin value typed into a Hindi-bound box
+      // is copied across and then transliterated back into proper Devanagari.
+      // Sweeping first would leave that case Latin, because the sweep would have
+      // no English source to work from.
+      const sweptMember = await sweepAutoHindi(
+        fillMissingEnglish(memberEdits as unknown as Record<string, string>, memberPairs),
+        memberPairs,
+      );
       setMemberEdits(sweptMember as unknown as MemberEdits);
 
       const spousePairs: [string, string][] = [
@@ -1352,13 +1422,23 @@ export default function FamilyCardClient({
         ["birth_gotra", "birth_gotra_en"], ["education", "education_en"], ["notes", "notes_en"],
       ];
       const sweptSpouses = await Promise.all(
-        spouseEdits.map((se) => sweepAutoHindi(se as unknown as Record<string, string>, spousePairs)),
+        spouseEdits.map((se) =>
+          sweepAutoHindi(
+            fillMissingEnglish(se as unknown as Record<string, string>, spousePairs),
+            spousePairs,
+          ),
+        ),
       );
       setSpouseEdits(sweptSpouses as unknown as SpouseEdits[]);
 
       const childPairs: [string, string][] = [["full_name", "full_name_en"], ["education", "education_en"], ["notes", "notes_en"], ["occupation", "occupation_en"]];
       const sweptChildren = await Promise.all(
-        childEdits.map((ce) => sweepAutoHindi(ce as unknown as Record<string, string>, childPairs)),
+        childEdits.map((ce) =>
+          sweepAutoHindi(
+            fillMissingEnglish(ce as unknown as Record<string, string>, childPairs),
+            childPairs,
+          ),
+        ),
       );
       setChildEdits(sweptChildren as unknown as ChildEdits[]);
 
@@ -1414,10 +1494,16 @@ export default function FamilyCardClient({
         memberEditsLocal as unknown as Record<string, string>,
         m as unknown as Record<string, string | null>,
         ["full_name", "education", "occupation", "addr_line1", "addr_line2", "city", "country", "state", "gotra", "husband_name", "notes"],
-        ["dob", "mobile_1", "mobile_2", "email", "pincode", "marital_status"]
+        ["dob", "mobile_1", "mobile_2", "email", "pincode", "marital_status", "date_of_death"]
       );
       if (memberPhotoUrl !== m.photo_url) {
         memberPayload.photo_url = memberPhotoUrl;
+      }
+      // is_deceased is boolean in the database; buildBilingualPayload only deals
+      // in strings, so it is diffed separately (S22).
+      const deceasedNow = memberEditsLocal.is_deceased === "yes";
+      if (deceasedNow !== Boolean(m.is_deceased)) {
+        (memberPayload as Record<string, unknown>).is_deceased = deceasedNow;
       }
 
       if (Object.keys(memberPayload).length > 0) {
@@ -1651,7 +1737,7 @@ export default function FamilyCardClient({
                     setMemberPhotoPreview(null);
                   }}
                 />
-                <span className="text-[11px] font-medium text-[var(--gold-deep)]">Upload Picture</span>
+                <span className="text-[11px] font-medium text-[var(--gold-deep)]">{t("upload_picture", lang)}</span>
               </div>
             ) : (
               <InitialsAvatar
@@ -1678,7 +1764,7 @@ export default function FamilyCardClient({
                   </h2>
                   {m.is_deceased && (
                     <span className="mt-1 inline-block text-[11px] font-medium uppercase tracking-wider text-[var(--gold-deep)]">
-                      In remembrance
+                      {t("status_deceased", lang)}
                     </span>
                   )}
                   {isOwnCard && !editing && (
@@ -1761,11 +1847,59 @@ export default function FamilyCardClient({
                   onChange={(e) => setMemberPlain("marital_status", e.target.value)}
                   className="min-h-[48px] w-full rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
                 >
-                  <option value="">— Select —</option>
-                  <option value="married">{lang === "en" ? "Married" : "विवाहित"}</option>
-                  <option value="unmarried">{lang === "en" ? "Unmarried" : "अविवाहित"}</option>
+                  <option value="">{t("select_placeholder", lang)}</option>
+                  <option value="married">{t("marital_married", lang)}</option>
+                  <option value="unmarried">{t("marital_unmarried", lang)}</option>
                 </select>
               </div>
+
+              {/* Deceased — a real control, given prominence on purpose (S22).
+                  Three people recorded a death by typing "LATE" into the name
+                  box because the only toggle was a checkbox behind admin login. */}
+              <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                <label className="flex cursor-pointer items-center justify-between gap-3">
+                  <span className="text-[13px] font-semibold text-[var(--maroon-deep)]">
+                    {t("label_is_deceased", lang)}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={memberEdits.is_deceased === "yes"}
+                    onChange={(e) => {
+                      setMemberPlain("is_deceased", e.target.checked ? "yes" : "");
+                      if (!e.target.checked) setMemberPlain("date_of_death", "");
+                    }}
+                    className="h-6 w-6 shrink-0 accent-[var(--maroon)]"
+                  />
+                </label>
+                <p className="mt-1 text-[11px] leading-snug text-[var(--muted)]">
+                  {t("deceased_hint", lang)}
+                </p>
+                {memberEdits.is_deceased === "yes" && (
+                  <div className="mt-1">
+                    <DateField
+                      label={t("label_dod", lang)}
+                      value={memberEdits.date_of_death}
+                      onChange={(v) => setMemberPlain("date_of_death", v)}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Honorific typed into the name — offer the toggle instead. */}
+              {nameHasLateMarker && (
+                <div className="border-b border-[var(--hairline)] py-2 last:border-0">
+                  <p className="rounded-[var(--r-sm)] border border-[var(--gold)]/40 bg-[rgba(201,150,46,0.08)] px-3 py-2 text-[12px] leading-snug text-[var(--maroon-deep)]">
+                    {t("deceased_marker_warning", lang)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={stripLateMarkerFromName}
+                    className="mt-1.5 text-[12px] font-medium text-[var(--gold-deep)] hover:text-[var(--maroon)]"
+                  >
+                    {t("deceased_marker_fix", lang)}
+                  </button>
+                </div>
+              )}
               {/* Notes textarea */}
               <div className="border-b border-[var(--hairline)] py-2 last:border-0">
                 <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</label>
@@ -1793,7 +1927,7 @@ export default function FamilyCardClient({
               {m.is_deceased && (
                 <InfoRow label={t("label_dod", lang)} value={m.date_of_death} />
               )}
-              <InfoRow label={t("label_marital_status", lang)} value={m.marital_status} />
+              <InfoRow label={t("label_marital_status", lang)} value={maritalStatusLabel(m.marital_status, lang)} />
               {memberNotes && (
                 <div className="border-b border-[var(--hairline)] py-2 last:border-0">
                   <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{t("label_notes", lang)}</p>
@@ -2575,7 +2709,7 @@ export default function FamilyCardClient({
                     {d.mobile && <p className="mt-0.5 text-[13px]">{renderMobiles(d.mobile)}</p>}
                     {d.husband_mobile && <p className="mt-0.5 text-[13px] text-[var(--muted)]">{t("label_husband_mobile", lang)}: {renderMobiles(d.husband_mobile)}</p>}
                     {d.email && <p className="mt-0.5 text-[13px]"><a href={`mailto:${d.email}`} className="text-[var(--gold-deep)] underline underline-offset-2 hover:text-[var(--maroon)]">{d.email}</a></p>}
-                    {dChildNote && <CollapsibleNote text={dChildNote} label={t("label_children_note", lang)} />}
+                    {dChildNote && <CollapsibleNote text={dChildNote} label={t("label_children_note", lang)} lang={lang} />}
                   </div>
                 );
               })}

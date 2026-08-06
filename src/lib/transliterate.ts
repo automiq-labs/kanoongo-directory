@@ -185,6 +185,13 @@ export async function transliterateWord(word: string): Promise<string | null> {
 
 /* ─── Phrase transliteration ─────────────────────────────────────────── */
 
+/**
+ * A word is a run starting with an alphanumeric and continuing through
+ * alphanumerics and dots — so the dictionary's abbreviations ("b.a.", "m.b.b.s.")
+ * survive tokenisation. Everything else is a separator.
+ */
+const WORD_RE = /[A-Za-z0-9][A-Za-z0-9.]*/g;
+
 export async function transliteratePhrase(phrase: string): Promise<string | null> {
   const trimmed = phrase.trim();
   if (!trimmed) return null;
@@ -193,13 +200,44 @@ export async function transliteratePhrase(phrase: string): Promise<string | null
   const lower = trimmed.toLowerCase();
   if (HI_DICTIONARY[lower]) return HI_DICTIONARY[lower];
 
-  const words = trimmed.split(/\s+/);
+  /*
+   * S22: this used to split on whitespace and hand every resulting chunk to the
+   * API, then return null if ANY chunk failed. Two consequences, both seen in
+   * production:
+   *
+   *   * "Founder - Automiq Labs" contains a bare "-", which no transliteration
+   *     service will render, so the whole phrase was abandoned and the field's
+   *     corrupt Hindi value survived every save.
+   *   * "Madhyam Marg, Mansarovar" came back as "माध्यम मार्ग मानसरोवर" — the
+   *     chunks were rejoined with single spaces, silently dropping the comma
+   *     (and any other attached punctuation).
+   *
+   * Tokenising into words and separators fixes both: separators pass through
+   * verbatim and can no longer fail, and only real words are sent to the API.
+   * Devanagari input falls into the separator class and passes through unchanged,
+   * which is the same result the old per-word Devanagari check produced.
+   */
+  const words: string[] = [];
+  const separators: string[] = [];
+  let cursor = 0;
+  WORD_RE.lastIndex = 0;
+  for (let m = WORD_RE.exec(trimmed); m; m = WORD_RE.exec(trimmed)) {
+    separators.push(trimmed.slice(cursor, m.index));
+    words.push(m[0]);
+    cursor = m.index + m[0].length;
+  }
+  const tail = trimmed.slice(cursor);
+
+  // Nothing to transliterate (e.g. already Devanagari) — hand it back as-is.
+  if (words.length === 0) return trimmed;
+
   const results = await Promise.all(words.map((w) => transliterateWord(w)));
 
-  // If ANY word failed, return null
+  // A genuine word failing still fails the phrase: a half-transliterated value
+  // would put Latin back into a Hindi column, which is the thing we are fixing.
   if (results.some((r) => r === null)) return null;
 
-  return results.join(" ");
+  return words.map((_, i) => separators[i] + results[i]).join("") + tail;
 }
 
 /* ─── React hook: useAutoHindi ───────────────────────────────────────── */
@@ -257,8 +295,10 @@ export function useAutoHindi(
     // Nothing to fill if English is empty
     if (!enTrimmed) return;
 
-    // Hindi is non-empty and was NOT auto-filled (user typed it) → don't touch
-    if (hiTrimmed && hiTrimmed !== lastAutoRef.current) return;
+    // Hindi is non-empty, was NOT auto-filled (user typed it), and is actually
+    // Hindi → don't touch. Residue with no Devanagari in it is not user-authored
+    // Hindi however it got there, so it stays eligible for refill (S22).
+    if (hiTrimmed && hiTrimmed !== lastAutoRef.current && !isNotHindi(hiTrimmed)) return;
 
     // Hindi is empty OR still matches the last auto-fill → (re)fill after debounce
     timerRef.current = setTimeout(() => {
@@ -284,7 +324,7 @@ export function useAutoHindi(
     const enTrimmed = englishValue.trim();
     const hiTrimmed = hindiValue.trim();
     if (!enTrimmed) return;
-    if (hiTrimmed && hiTrimmed !== lastAutoRef.current) return;
+    if (hiTrimmed && hiTrimmed !== lastAutoRef.current && !isNotHindi(hiTrimmed)) return;
     doFill(enTrimmed);
   }, [englishValue, hindiValue, doFill]);
 
@@ -294,8 +334,26 @@ export function useAutoHindi(
 /* ─── Pre-save sweep ─────────────────────────────────────────────────── */
 
 /**
- * Fill any still-empty Hindi fields before save. Non-blocking: if the API
- * fails, the pair is skipped (Hindi stays empty). Returns updated edits.
+ * True when a Hindi column holds something that cannot be Hindi: no Devanagari
+ * anywhere in it. Latin text, a bare digit and punctuation all qualify.
+ *
+ * This is the check that catches the S22 corruption class. Until S22 the sweep
+ * only filled *empty* Hindi fields, so a Hindi column left holding "D" (or "9",
+ * which passes every Latin-character audit) survived every subsequent save —
+ * both this sweep and useAutoHindi treat a non-empty value as user-authored and
+ * refuse to touch it. Anything with no Devanagari in it was never user-authored
+ * Hindi, so it is safe to re-derive from the English side.
+ */
+function isNotHindi(value: string): boolean {
+  return value.trim() !== "" && !DEVANAGARI_RE.test(value);
+}
+
+/**
+ * Fill Hindi fields before save. Non-blocking: if the API fails the pair is
+ * skipped and the existing value is left alone. Returns updated edits.
+ *
+ * A Hindi field is (re)filled when it is empty OR when it holds no Devanagari
+ * at all while the English side has content — see isNotHindi above.
  *
  * @param edits       current form values (Record<string, string>)
  * @param pairs       array of [hindiKey, englishKey] tuples
@@ -310,7 +368,7 @@ export async function sweepAutoHindi(
   for (const [hiKey, enKey] of pairs) {
     const enVal = (updated[enKey] || "").trim();
     const hiVal = (updated[hiKey] || "").trim();
-    if (enVal && !hiVal) {
+    if (enVal && (!hiVal || isNotHindi(hiVal))) {
       pending.push(
         transliteratePhrase(enVal).then((result) => {
           if (result) updated[hiKey] = result;
@@ -320,5 +378,33 @@ export async function sweepAutoHindi(
   }
 
   await Promise.all(pending);
+  return updated;
+}
+
+/**
+ * The reverse leg: copy the Hindi value verbatim into an English field that is
+ * empty, or that holds the truncated residue of the pre-S22 per-keystroke
+ * mirror (see setEditVal in family-card-client).
+ *
+ * Deliberately verbatim rather than transliterated — there is no Hindi→Latin
+ * service here, and a verbatim Devanagari value in `_en` still renders through
+ * bi()'s fallback, whereas a single stray character does not.
+ *
+ * Synchronous: no network involved.
+ */
+export function fillMissingEnglish(
+  edits: Record<string, string>,
+  pairs: [string, string][],
+): Record<string, string> {
+  const updated = { ...edits };
+  for (const [hiKey, enKey] of pairs) {
+    const hiVal = (updated[hiKey] || "").trim();
+    const enVal = (updated[enKey] || "").trim();
+    if (!hiVal) continue;
+    // Empty, or a strict prefix shorter than the Hindi it was mirrored from —
+    // the exact signature of the first-character bug.
+    const isTruncatedMirror = enVal !== "" && enVal.length < hiVal.length && hiVal.startsWith(enVal);
+    if (!enVal || isTruncatedMirror) updated[enKey] = hiVal;
+  }
   return updated;
 }

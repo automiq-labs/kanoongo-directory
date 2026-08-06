@@ -2,6 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { COUNTRY_CODES } from "@/lib/form-options";
+import { useLang } from "@/lib/language-context";
+import { t } from "@/lib/translations";
 
 interface PhoneFieldProps {
   value: string;
@@ -29,6 +31,7 @@ function parsePhone(val: string): { codeIdx: number; number: string } {
 }
 
 export default function PhoneField({ value, onChange, label }: PhoneFieldProps) {
+  const { lang } = useLang();
   const initial = parsePhone(value);
   const [codeIdx, setCodeIdx] = useState(initial.codeIdx);
   const [number, setNumber] = useState(initial.number);
@@ -72,7 +75,7 @@ export default function PhoneField({ value, onChange, label }: PhoneFieldProps) 
             setNumber(e.target.value);
             emit(codeIdx, e.target.value);
           }}
-          placeholder="Phone number"
+          placeholder={t("phone_number", lang)}
           className="min-h-[48px] min-w-0 flex-1 rounded-[var(--r)] border border-[#ECE0C8] bg-white px-3 py-2 text-base text-[var(--maroon-deep)] focus:border-[var(--gold)] focus:ring-2 focus:ring-[var(--gold)]/30 focus:outline-none"
         />
       </div>

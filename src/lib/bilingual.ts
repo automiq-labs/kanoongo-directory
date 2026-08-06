@@ -1,4 +1,4 @@
-import type { Lang } from "./translations";
+import { t, type Lang } from "./translations";
 
 /**
  * Pick the right value based on language.
@@ -13,4 +13,22 @@ export function bi(
     return enValue || hiValue || null;
   }
   return hiValue || null;
+}
+
+/**
+ * `members.marital_status` is a stored enum-ish text, `married` / `unmarried`.
+ * The family card and the admin child rows printed it raw, so the Hindi toggle
+ * left "married" in English on the most-viewed page in the app (S22).
+ *
+ * Anything outside the two known values is passed through unchanged rather than
+ * blanked — an unexpected value should stay visible.
+ */
+export function maritalStatusLabel(
+  value: string | null | undefined,
+  lang: Lang,
+): string | null {
+  const v = (value || "").trim().toLowerCase();
+  if (v === "married") return t("marital_married", lang);
+  if (v === "unmarried") return t("marital_unmarried", lang);
+  return value || null;
 }
