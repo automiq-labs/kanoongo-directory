@@ -111,25 +111,31 @@ function HeadingRow({ title, numbering }: { title: string; numbering?: React.Rea
 }
 
 function SpacerRow() {
-  return <tr className="spacer"><td colSpan={4}>{NBSP}</td></tr>;
+  return <tr className="bk-spacer"><td colSpan={4}>{NBSP}</td></tr>;
 }
 
 /**
  * The one skeleton. Every section of every entry in both editions uses these
- * four widths, and `.grid` is `table-layout: fixed`, so the dividers stack in
+ * four widths, and .bk-grid is `table-layout: fixed`, so the dividers stack in
  * the same x-position on every box on every page instead of being re-derived
  * from each table's own content.
  *
  * Book proportions: label columns narrow and equal, value columns wide, the
  * left value column narrower than the right.
+ *
+ * Stated as absolute lengths off --page-w (the A4 content width in mm) rather
+ * than as percentages, so a column width never depends on what any ancestor
+ * thinks its own width is. 20/28/20/32 of 186mm puts the three dividers at
+ * 37.2mm / 89.28mm / 126.48mm on every box of every page.
  */
+const COL_FRACTIONS = [0.2, 0.28, 0.2, 0.32];
+
 function Cols() {
   return (
     <colgroup>
-      <col style={{ width: "20%" }} />
-      <col style={{ width: "28%" }} />
-      <col style={{ width: "20%" }} />
-      <col style={{ width: "32%" }} />
+      {COL_FRACTIONS.map((f, i) => (
+        <col key={i} style={{ width: `calc(var(--page-w, 186mm) * ${f})` }} />
+      ))}
     </colgroup>
   );
 }
@@ -345,9 +351,9 @@ function MemberSheet({
             block is the same element and the same width. Tables laid out as
             flex items of .sheet shrank to their own content, which is why the
             children and ससुराल boxes came out narrower than the main one. */}
-        <div className="grid-stack">
+        <div className="bk-grid-stack">
           {/* Personal + wife share one bordered table, as in the register */}
-          <table className="grid">
+          <table className="bk-grid">
             <Cols />
             <tbody>
               <HeadingRow
@@ -368,7 +374,7 @@ function MemberSheet({
 
           {/* Children — one 3-row block each, numbered; heading always printed */}
           {page.unmarriedChildren.length > 0 && (
-            <table className="grid block">
+            <table className="bk-grid bk-block">
               <Cols />
               <tbody>
                 <HeadingRow title={t("book_sec_children", lang)} />
@@ -393,7 +399,7 @@ function MemberSheet({
           )}
 
           {/* ससुराल — fixed slots, two per row */}
-          <table className="grid block">
+          <table className="bk-grid bk-block">
             <Cols />
             <tbody>
               <HeadingRow title={t("book_sec_sasural", lang)} />
@@ -407,7 +413,7 @@ function MemberSheet({
           </table>
 
           {page.daughters.length > 0 && (
-            <table className="grid block">
+            <table className="bk-grid bk-block">
               <Cols />
               <tbody>
                 <HeadingRow title={t("book_sec_daughters", lang)} />
@@ -429,8 +435,8 @@ function MemberSheet({
       {page.daughterOverflow.map((slice, si) => (
         <Sheet key={`cont-${si}`}>
           <Header lang={lang} year={year} />
-          <div className="grid-stack">
-            <table className="grid">
+          <div className="bk-grid-stack">
+            <table className="bk-grid">
               <Cols />
               <tbody>
                 <HeadingRow
@@ -511,12 +517,12 @@ function FrontMatter({
       <Sheet>
         <Header lang={lang} year={year} />
         <h2 className="fm-h">{t("book_tree_heading", lang)}</h2>
-        <ul className="outline">
+        <ul className="bk-outline">
           {outline.map((row, i) => (
-            <li key={i} style={{ paddingLeft: `${row.depth * 12}px` }} className="outline-row">
-              <span className="outline-name">{row.name}</span>
-              {row.note && <span className="outline-note"> — {row.note}</span>}
-              {row.page && <span className="outline-page"> [{row.page}]</span>}
+            <li key={i} style={{ paddingLeft: `${row.depth * 12}px` }} className="bk-outline-row">
+              <span className="bk-outline-name">{row.name}</span>
+              {row.note && <span className="bk-outline-note"> — {row.note}</span>}
+              {row.page && <span className="bk-outline-page"> [{row.page}]</span>}
             </li>
           ))}
         </ul>
@@ -615,9 +621,46 @@ export default function PrintClient({ edition }: { edition: Lang }) {
 // Monochrome throughout, matching the register. The only colour in the whole
 // document is the red लेटेस्ट फोटो placeholder text — text only, no box.
 const PRINT_CSS = `
-@page { size: A4 portrait; margin: 12mm 12mm 14mm 20mm; }
+/* ── Why every class here is prefixed bk- ──────────────────────────────
+   ROOT CAUSE of the S22/S23 defects, measured not guessed.
+
+   globals.css does @import "tailwindcss". Tailwind v4 scans source files for
+   class tokens and emits a utility for each one it finds, so the literal
+   strings in this file's className attributes produced, in the app's built
+   stylesheet:
+
+       .grid    { display: grid; }      <- className="grid"       (every box)
+       .block   { display: block; }     <- className="grid block"
+       .outline { outline-width: 1px; } <- className="outline"
+
+   Both .grid rules have specificity (0,1,0) and this stylesheet never
+   declared a display of its own, so Tailwind's display:grid applied and
+   every section table was a GRID CONTAINER, not a table. table-layout and
+   the <col> skeleton are inert on a grid container, so the <td>s fell into
+   an anonymous table box that shrink-wrapped to its own content — a
+   different width and different divider positions in every box, on every
+   entry, in both media. The gap between the correctly-sized container and
+   that narrower anonymous table inside it was the "empty orphan column
+   hanging off the right edge".
+
+   This is why screen and print disagreed in S23: the screen check measured
+   the outer element (the grid container, correctly 186mm) while the PDF
+   showed the painted inner table. One bug, both media — it was never
+   print-specific.
+
+   The names are namespaced so no Tailwind utility can claim them again, and
+   the structural rules below now state display explicitly so a future
+   collision fails loudly instead of silently changing the layout mode.
+
+   ── Physical page geometry ──
+   This is an A4 artifact, so its widths are stated in millimetres, never as
+   percentages of an ancestor. */
+@page { size: A4 portrait; margin: 12mm; }
 
 .book {
+  /* A4 210mm wide, less the 12mm @page margin on each side. Every printed
+     box below is exactly this wide — this is the single source of truth. */
+  --page-w: 186mm;
   font-family: var(--font-noto-serif-devanagari), var(--font-fraunces), Georgia, serif;
   color: #000; background: #6e6e6e; padding: 16px 0;
 }
@@ -637,9 +680,12 @@ const PRINT_CSS = `
 }
 .tb-hint { font-size: 12px; opacity: .85; }
 
+/* One printed page. The sheet IS the A4 content area — the paper margin comes
+   from @page, not from padding here, so the sheet's width and the grid's width
+   are the same number and the boxes can be checked against it directly. */
 .sheet {
-  width: 210mm; min-height: 297mm; box-sizing: border-box;
-  margin: 0 auto 14px; padding: 14mm 12mm 12mm 18mm;
+  width: var(--page-w); min-height: 273mm; box-sizing: border-box;  /* 297mm − 2 × 12mm */
+  margin: 0 auto 14px; padding: 0;
   background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.35);
   display: flex; flex-direction: column;
   page-break-after: always; break-after: page;
@@ -660,37 +706,39 @@ const PRINT_CSS = `
 .ph-empty { color: #c00; font-size: 8pt; font-weight: 600; line-height: 1.25; }
 .ph-cap { font-size: 8pt; line-height: 1.25; height: 8mm; }
 
-/* The shared skeleton.
-   .grid-stack is a plain block so every box below it resolves its width
-   against the same containing block; table-layout:fixed makes the Cols()
-   colgroup authoritative, so column widths — and therefore divider
-   x-positions — are identical in every section of every entry rather than
-   being re-derived from each table's own content. */
-.grid-stack { width: 100%; }
+/* The shared skeleton. display is declared on both of these on purpose: it is
+   the property a stray utility took over last time, and stating it here means
+   any future collision loses to this rule instead of silently switching the
+   box out of table layout. */
+.bk-grid-stack { display: block; width: var(--page-w); }
 
-/* The four-column grid. Labels right-aligned, no cell shading. */
-.grid {
-  width: 100%; table-layout: fixed;
+/* The four-column grid. Labels right-aligned, no cell shading.
+   width is the absolute A4 content width, not 100% of anything: with
+   table-layout: fixed that makes the Cols() skeleton definite regardless of
+   what any ancestor is doing, in either medium. */
+.bk-grid {
+  display: table;
+  width: var(--page-w); table-layout: fixed;
   border-collapse: collapse; font-size: 9.5pt; border: 0.8px solid #000;
 }
-.grid.block { margin-top: 4mm; }
+.bk-grid.bk-block { margin-top: 4mm; }
 /* height acts as a minimum on table cells: single-line rows are all exactly
    this tall on every entry, and a wrapped value grows the row instead of
    letting a blank one collapse. */
-.grid td {
+.bk-grid td {
   border: 0.6px solid #000; padding: 1px 4px;
   vertical-align: top; line-height: 1.4; height: 5.2mm;
 }
 /* Labels wrap rather than overflow now that the column width is locked. */
-.grid .lbl { text-align: right; font-weight: 600; }
-.grid .val { text-align: left; overflow-wrap: anywhere; }
-.grid .numcell { text-align: center; font-weight: 700; letter-spacing: .3px; white-space: nowrap; }
-.grid .note-cell { border-left: 0.6px solid #000; }
-.grid .sec-cell { font-weight: 700; }
+.bk-grid .lbl { text-align: right; font-weight: 600; }
+.bk-grid .val { text-align: left; overflow-wrap: anywhere; }
+.bk-grid .numcell { text-align: center; font-weight: 700; letter-spacing: .3px; white-space: nowrap; }
+.bk-grid .note-cell { border-left: 0.6px solid #000; }
+.bk-grid .sec-cell { font-weight: 700; }
 .sec-h { text-decoration: underline; text-underline-offset: 2px; }
 .numbox-n, .numbox-id { font-weight: 700; }
 .numbox-lang { letter-spacing: .8px; }
-.grid tr.spacer td { border-left: 0; border-right: 0; height: 2mm; }
+.bk-grid tr.bk-spacer td { border-left: 0; border-right: 0; height: 2mm; }
 
 .bk-foot { margin-top: auto; padding-top: 4mm; font-size: 7.5pt; line-height: 1.4; }
 .bk-foot-line { text-align: center; margin: 0; }
@@ -708,19 +756,33 @@ const PRINT_CSS = `
 .fm-sign { font-size: 9.5pt; white-space: pre-line; margin: 4px 0; text-align: right; font-weight: 600; }
 .fm-note { font-size: 7.5pt; line-height: 1.35; margin: 3px 0; }
 
-.outline { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 10mm; font-size: 8.5pt; }
-.outline-row { line-height: 1.45; break-inside: avoid; }
-.outline-name { font-weight: 500; }
-.outline-note, .outline-page { font-size: 7.5pt; }
+.bk-outline { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 10mm; font-size: 8.5pt; }
+.bk-outline-row { line-height: 1.45; break-inside: avoid; }
+.bk-outline-name { font-weight: 500; }
+.bk-outline-note, .bk-outline-page { font-size: 7.5pt; }
 
 .gen-block { margin-bottom: 4px; break-inside: avoid; }
 .gen-h { font-size: 10pt; margin: 0 0 2px; text-decoration: underline; }
 .gen-names { font-size: 8.5pt; line-height: 1.5; margin: 0; }
 
 @media print {
-  .book { background: #fff; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Defensive, not the fix — the fix is the bk- namespace above. The app shell
+     sets <html class="h-full"> and <body class="min-h-full flex flex-col">
+     (src/app/layout.tsx), and LanguageProvider renders no wrapper, so .book is
+     a direct flex item of <body>. A ~120-page document has no business being
+     a fragmented flex container one page tall, so print puts it back to plain
+     block layout. This deliberately reaches outside the route's own subtree;
+     it is confined to print media, so the shell's screen layout is untouched. */
+  html { height: auto; }
+  body { display: block; min-height: 0; margin: 0; background: #fff; }
+  .book { display: block; background: #fff; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
   .toolbar { display: none !important; }
-  .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
-  .grid, .gen-block, .outline-row, .photos { break-inside: avoid; }
+  /* width, padding and box-sizing stay as declared above — the sheet is
+     already exactly the A4 content area. Only the screen furniture comes off.
+     min-height is released so a short entry does not pad itself out and a long
+     one spills onto a second page rather than being squeezed. */
+  .sheet { display: block; min-height: 0; margin: 0; box-shadow: none; }
+  .bk-grid, .gen-block, .bk-outline-row, .photos { break-inside: avoid; }
 }
 `;
