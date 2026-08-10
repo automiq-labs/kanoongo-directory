@@ -68,6 +68,10 @@ type Pair = [label: string, value: string];
  * The register's core geometry: two independent label/value stacks side by
  * side. They are NOT paired — on page 036 the left stack runs out after four
  * rows while the right continues to six, leaving the left cells blank.
+ *
+ * Both stacks are fixed-length per section (see MemberSheet): a slot with no
+ * data still prints its label and an empty value, because the register is a
+ * form and its symmetry depends on every page having the same rows.
  */
 function PairRows({ left, right }: { left: Pair[]; right: Pair[] }) {
   const rows = Math.max(left.length, right.length);
@@ -85,16 +89,23 @@ function PairRows({ left, right }: { left: Pair[]; right: Pair[] }) {
   );
 }
 
-/** Section heading: underlined text in the value column, as the register sets it. */
+/**
+ * Section heading: a fixed triple, never anything else.
+ *
+ *   numbering (col 1) │ section title (cols 2–3) │ blank note cell (col 4)
+ *
+ * Both of its internal dividers land on skeleton dividers (20% and 68%), so a
+ * heading row never introduces an x-position the body rows do not already have.
+ */
 function HeadingRow({ title, numbering }: { title: string; numbering?: React.ReactNode }) {
   return (
     <tr>
       <td className="numcell">{numbering ?? NBSP}</td>
-      <td className="sec-cell"><span className="sec-h">{title}</span></td>
+      <td className="sec-cell" colSpan={2}><span className="sec-h">{title}</span></td>
       {/* The originals carry a production note here (COMP PHOT COMP …).
-          We have no equivalent field, so the cell stays empty rather than
-          inventing one. */}
-      <td className="note-cell" colSpan={2}>{NBSP}</td>
+          Ours stays empty by ruling, but the cell is still rendered — the
+          geometry depends on it. */}
+      <td className="note-cell">{NBSP}</td>
     </tr>
   );
 }
@@ -103,13 +114,22 @@ function SpacerRow() {
   return <tr className="spacer"><td colSpan={4}>{NBSP}</td></tr>;
 }
 
+/**
+ * The one skeleton. Every section of every entry in both editions uses these
+ * four widths, and `.grid` is `table-layout: fixed`, so the dividers stack in
+ * the same x-position on every box on every page instead of being re-derived
+ * from each table's own content.
+ *
+ * Book proportions: label columns narrow and equal, value columns wide, the
+ * left value column narrower than the right.
+ */
 function Cols() {
   return (
     <colgroup>
-      <col style={{ width: "18%" }} />
+      <col style={{ width: "20%" }} />
+      <col style={{ width: "28%" }} />
+      <col style={{ width: "20%" }} />
       <col style={{ width: "32%" }} />
-      <col style={{ width: "17%" }} />
-      <col style={{ width: "33%" }} />
     </colgroup>
   );
 }
@@ -234,17 +254,19 @@ function MemberSheet({
   ]);
 
   // Blank labelled rows are printed on purpose — the register is a form, and
-  // these fill themselves in if the columns are ever added.
+  // these fill themselves in if the columns are ever added. The stack length is
+  // fixed: no row is added or dropped because a particular man has or lacks a
+  // value, otherwise the rows stop lining up from one page to the next.
   const personalLeft: Pair[] = [
     [t("book_lbl_name", lang), name],
     [t("label_father_name", lang), fatherName],
     [t("label_occupation", lang), bi(m.occupation, m.occupation_en, lang) || ""],
     [t("book_lbl_office_addr", lang), ""],           // no column
+    // Printed for everyone, blank for the living — as the wife block already
+    // does. Previously this row appeared only for the 20 dated deceased, which
+    // made the personal block five rows tall on some entries and four on others.
+    [t("book_lbl_death_date", lang), m.is_deceased ? fmtDate(m.date_of_death) : ""],
   ];
-  if (m.is_deceased && m.date_of_death) {
-    // 12 of the 32 deceased have no date; those print स्वर्गीय with no row.
-    personalLeft.push([t("book_lbl_death_date", lang), fmtDate(m.date_of_death)]);
-  }
   const personalRight: Pair[] = [
     [t("book_lbl_dob_main", lang), fmtDate(m.dob)],
     [t("book_lbl_dob_office", lang), ""],            // no column
@@ -319,90 +341,17 @@ function MemberSheet({
           ]}
         />
 
-        {/* Personal + wife share one bordered table, as in the register */}
-        <table className="grid">
-          <Cols />
-          <tbody>
-            <HeadingRow
-              title={t("book_sec_personal", lang)}
-              numbering={
-                <span className="numbox">
-                  <span className="numbox-n">{String(page.pageNumber).padStart(3, "0")}</span>{" "}
-                  <span className="numbox-id">{page.registerId}</span>{" "}
-                  <span className="numbox-lang">{lang === "en" ? "ENGLISH" : "HINDI"}</span>
-                </span>
-              }
-            />
-            <PairRows left={personalLeft} right={personalRight} />
-            <HeadingRow title={t("book_sec_wife", lang)} />
-            <PairRows left={wifeLeft} right={wifeRight} />
-          </tbody>
-        </table>
-
-        {/* Children — one 3-row block each, numbered; heading always printed */}
-        {page.unmarriedChildren.length > 0 && (
-          <table className="grid block">
-            <Cols />
-            <tbody>
-              <HeadingRow title={t("book_sec_children", lang)} />
-              {page.unmarriedChildren.map((c, i) => (
-                <Fragment key={c.key}>
-                  {i > 0 && <SpacerRow />}
-                  <PairRows
-                    left={[
-                      [`${i + 1} ${t("book_lbl_name", lang)}`, bi(c.full_name, c.full_name_en, lang) || ""],
-                      [t("label_education", lang), bi(c.education, c.education_en, lang) || ""],
-                    ]}
-                    right={[
-                      [t("book_lbl_dob_child", lang), fmtDate(c.dob)],
-                      [t("book_lbl_mobile_email", lang), joinParts([c.mobile, c.email])],
-                      [t("book_lbl_work", lang), bi(c.occupation, c.occupation_en, lang) || ""],
-                    ]}
-                  />
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        {/* ससुराल — fixed slots, two per row */}
-        <table className="grid block">
-          <Cols />
-          <tbody>
-            <HeadingRow title={t("book_sec_sasural", lang)} />
-            {slotPairs.map(([a, b], i) => (
-              <Fragment key={i}>
-                {i > 0 && <SpacerRow />}
-                <PairRows left={slotRows(a)} right={slotRows(b)} />
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-
-        {page.daughters.length > 0 && (
-          <table className="grid block">
-            <Cols />
-            <tbody>
-              <HeadingRow title={t("book_sec_daughters", lang)} />
-              {page.daughters.map((d, i) => (
-                <DaughterBlock key={d.member.member_id} entry={d} index={i + 1} lang={lang} />
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <Footer lang={lang} stamp={stamp} />
-      </Sheet>
-
-      {/* Continuation sheets — same register id, marked (क्रमशः) */}
-      {page.daughterOverflow.map((slice, si) => (
-        <Sheet key={`cont-${si}`}>
-          <Header lang={lang} year={year} />
+        {/* Every section box lives in this block so each table's containing
+            block is the same element and the same width. Tables laid out as
+            flex items of .sheet shrank to their own content, which is why the
+            children and ससुराल boxes came out narrower than the main one. */}
+        <div className="grid-stack">
+          {/* Personal + wife share one bordered table, as in the register */}
           <table className="grid">
             <Cols />
             <tbody>
               <HeadingRow
-                title={`${t("book_sec_daughters", lang)} ${t("book_continued", lang)}`}
+                title={t("book_sec_personal", lang)}
                 numbering={
                   <span className="numbox">
                     <span className="numbox-n">{String(page.pageNumber).padStart(3, "0")}</span>{" "}
@@ -411,16 +360,102 @@ function MemberSheet({
                   </span>
                 }
               />
-              {slice.map((d, i) => (
-                <DaughterBlock
-                  key={d.member.member_id}
-                  entry={d}
-                  index={page.daughters.length + si * slice.length + i + 1}
-                  lang={lang}
-                />
+              <PairRows left={personalLeft} right={personalRight} />
+              <HeadingRow title={t("book_sec_wife", lang)} />
+              <PairRows left={wifeLeft} right={wifeRight} />
+            </tbody>
+          </table>
+
+          {/* Children — one 3-row block each, numbered; heading always printed */}
+          {page.unmarriedChildren.length > 0 && (
+            <table className="grid block">
+              <Cols />
+              <tbody>
+                <HeadingRow title={t("book_sec_children", lang)} />
+                {page.unmarriedChildren.map((c, i) => (
+                  <Fragment key={c.key}>
+                    {i > 0 && <SpacerRow />}
+                    <PairRows
+                      left={[
+                        [`${i + 1} ${t("book_lbl_name", lang)}`, bi(c.full_name, c.full_name_en, lang) || ""],
+                        [t("label_education", lang), bi(c.education, c.education_en, lang) || ""],
+                      ]}
+                      right={[
+                        [t("book_lbl_dob_child", lang), fmtDate(c.dob)],
+                        [t("book_lbl_mobile_email", lang), joinParts([c.mobile, c.email])],
+                        [t("book_lbl_work", lang), bi(c.occupation, c.occupation_en, lang) || ""],
+                      ]}
+                    />
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* ससुराल — fixed slots, two per row */}
+          <table className="grid block">
+            <Cols />
+            <tbody>
+              <HeadingRow title={t("book_sec_sasural", lang)} />
+              {slotPairs.map(([a, b], i) => (
+                <Fragment key={i}>
+                  {i > 0 && <SpacerRow />}
+                  <PairRows left={slotRows(a)} right={slotRows(b)} />
+                </Fragment>
               ))}
             </tbody>
           </table>
+
+          {page.daughters.length > 0 && (
+            <table className="grid block">
+              <Cols />
+              <tbody>
+                <HeadingRow title={t("book_sec_daughters", lang)} />
+                {page.daughters.map((d, i) => (
+                  <Fragment key={d.member.member_id}>
+                    {i > 0 && <SpacerRow />}
+                    <DaughterBlock entry={d} index={i + 1} lang={lang} />
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <Footer lang={lang} stamp={stamp} />
+      </Sheet>
+
+      {/* Continuation sheets — same register id, marked (क्रमशः) */}
+      {page.daughterOverflow.map((slice, si) => (
+        <Sheet key={`cont-${si}`}>
+          <Header lang={lang} year={year} />
+          <div className="grid-stack">
+            <table className="grid">
+              <Cols />
+              <tbody>
+                <HeadingRow
+                  title={`${t("book_sec_daughters", lang)} ${t("book_continued", lang)}`}
+                  numbering={
+                    <span className="numbox">
+                      <span className="numbox-n">{String(page.pageNumber).padStart(3, "0")}</span>{" "}
+                      <span className="numbox-id">{page.registerId}</span>{" "}
+                      <span className="numbox-lang">{lang === "en" ? "ENGLISH" : "HINDI"}</span>
+                    </span>
+                  }
+                />
+                {slice.map((d, i) => (
+                  <Fragment key={d.member.member_id}>
+                    {i > 0 && <SpacerRow />}
+                    <DaughterBlock
+                      entry={d}
+                      index={page.daughters.length + si * slice.length + i + 1}
+                      lang={lang}
+                    />
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <Footer lang={lang} stamp={stamp} />
         </Sheet>
       ))}
@@ -625,12 +660,30 @@ const PRINT_CSS = `
 .ph-empty { color: #c00; font-size: 8pt; font-weight: 600; line-height: 1.25; }
 .ph-cap { font-size: 8pt; line-height: 1.25; height: 8mm; }
 
+/* The shared skeleton.
+   .grid-stack is a plain block so every box below it resolves its width
+   against the same containing block; table-layout:fixed makes the Cols()
+   colgroup authoritative, so column widths — and therefore divider
+   x-positions — are identical in every section of every entry rather than
+   being re-derived from each table's own content. */
+.grid-stack { width: 100%; }
+
 /* The four-column grid. Labels right-aligned, no cell shading. */
-.grid { width: 100%; border-collapse: collapse; font-size: 9.5pt; border: 0.8px solid #000; }
+.grid {
+  width: 100%; table-layout: fixed;
+  border-collapse: collapse; font-size: 9.5pt; border: 0.8px solid #000;
+}
 .grid.block { margin-top: 4mm; }
-.grid td { border: 0.6px solid #000; padding: 1px 4px; vertical-align: top; line-height: 1.4; }
-.grid .lbl { text-align: right; font-weight: 600; white-space: nowrap; }
-.grid .val { text-align: left; }
+/* height acts as a minimum on table cells: single-line rows are all exactly
+   this tall on every entry, and a wrapped value grows the row instead of
+   letting a blank one collapse. */
+.grid td {
+  border: 0.6px solid #000; padding: 1px 4px;
+  vertical-align: top; line-height: 1.4; height: 5.2mm;
+}
+/* Labels wrap rather than overflow now that the column width is locked. */
+.grid .lbl { text-align: right; font-weight: 600; }
+.grid .val { text-align: left; overflow-wrap: anywhere; }
 .grid .numcell { text-align: center; font-weight: 700; letter-spacing: .3px; white-space: nowrap; }
 .grid .note-cell { border-left: 0.6px solid #000; }
 .grid .sec-cell { font-weight: 700; }
